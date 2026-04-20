@@ -24,3 +24,53 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Animation des cartes qui arrivent de partout et forment un deck */
+
+/* Animation de base : arrivée vers le centre */
+@keyframes cardToDeck {
+  0% {
+    opacity: 0;
+    scale: 0.3;
+  }
+  20% {
+    opacity: 1;
+    scale: 1.1;
+  }
+  100% {
+    opacity: 1;
+    scale: 1;
+    translate: 0 0;
+  }
+}
+
+.card-to-deck {
+  animation: cardToDeck 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  opacity: 0;
+}
+
+/* Directions de départ */
+.card-to-deck.from-top {
+  translate: 0 -100vh;
+}
+.card-to-deck.from-top-right {
+  translate: 50vw -50vh;
+}
+.card-to-deck.from-right {
+  translate: 100vw 0;
+}
+.card-to-deck.from-bottom-right {
+  translate: 50vw 50vh;
+}
+.card-to-deck.from-bottom {
+  translate: 0 100vh;
+}
+.card-to-deck.from-bottom-left {
+  translate: -50vw 50vh;
+}
+.card-to-deck.from-left {
+  translate: -100vw 0;
+}
+.card-to-deck.from-top-left {
+  translate: -50vw -50vh;
+}
