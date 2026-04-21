@@ -18,8 +18,11 @@ commander-optimizer/
 │       ├── generate-deck/route.ts    # POST /api/generate-deck
 │       └── autocomplete/route.ts     # GET /api/autocomplete?q=
 ├── lib/
-│   ├── scryfall.ts                   # Client Scryfall API + helpers
-│   └── deckBuilder.ts                # Algorithme de génération de deck
+│   ├── types.ts                      # Interfaces TypeScript partagées (DeckCard, GeneratedDeck, SlotCounts, ProgressEvent)
+│   ├── scoring.ts                    # Évaluation des cartes (detectRoles, scoreCard, ROLE_PATTERNS, TAG_TO_PATTERN)
+│   ├── slots.ts                      # Définitions des slots (DECK_SLOTS, buildSynergyQueries, BUDGET_WEIGHTS, DEFAULT_SLOT_COUNTS)
+│   ├── scryfall.ts                   # Client Scryfall API + Tagger GraphQL (getTaggerOracleTags)
+│   └── deckBuilder.ts                # Orchestration : generateDeck(), logger, file d'animation UI
 ```
 
 ---
@@ -39,27 +42,39 @@ commander-optimizer/
 ### Distribution cible (99 cartes hors Commander)
 | Rôle | Cartes | Description |
 |------|--------|-------------|
-| Rampe | 10 | Mana rocks (artefacts), sorts qui cherchent des terres |
-| Pioche | 10 | Instants/rituels/enchantements qui font piocher |
-| Suppression | 8 | Removal ciblé (instants + rituels) |
-| Balayage | 3 | Mass removal (rituels) |
-| Synergie | 31 | Créatures synergiques |
-| Terres non-basic | 10 | Terres utilitaires |
-| Terres basiques | max 27 | Complément, plafonné à 27 |
+| Rampe | 10 | Mana rocks, sorts et créatures qui cherchent des terres |
+| Pioche | 10 | Instants/rituels/enchantements/créatures qui font piocher |
+| Suppression | 8 | Removal ciblé (toutes typologies) |
+| Balayage | 3 | Mass removal |
+| Synergie | 31 | Cartes synergiques avec le Commander |
+| Terres non-basic | max 29 | Terres utilitaires (plafonné pour garantir des basics) |
+| Terres basiques | min 8 | Toujours au moins 8 pour les sorts de ramp (Cultivate, Farseek...) |
 
 ### Logique de remplissage
-- Chaque slot a **plusieurs requêtes Scryfall en fallback** : si la première ne remplit pas le quota, on tente la suivante
-- Les cartes sont triées par `edhrec_rank` (popularité Commander sur EDHREC, champ natif Scryfall)
-- Filtre prix : `eur <= min(budget × 20%, 30€)` avec plancher à 1€
+- Chaque slot a **plusieurs requêtes Scryfall en fallback** (inclut désormais les créatures pour tous les slots)
+- Les cartes sont scorées via `scoreCard()` : popularité EDHREC + bonus synergie Commander + bonus multi-rôle
+- `detectRoles()` détecte les rôles fonctionnels depuis `oracle_text` (sans appel API)
 - Déduplication stricte par nom de carte (Commander inclus)
-- Terres basiques groupées (ex: `27× Plains` au lieu de 27 lignes séparées)
+- Terres basiques groupées (ex: `8× Swamp`)
+
+### Synergie Commander (`lib/slots.ts:buildSynergyQueries`)
+1. Tags oracle du Commander via Tagger Scryfall (GraphQL non documenté, CSRF token)
+2. Requêtes `otag:TAG type:creature` (créatures synergiques) puis `otag:TAG` (non-créatures : Grave Pact, Ashnod's Altar...)
+3. Fallback tribal : sous-types du `type_line` du Commander (ex: `type:dragon`)
+4. Fallback générique `type:creature`
+
+### Scoring (`lib/scoring.ts:scoreCard`)
+- **Popularité** : `max(0, 100 - edhrec_rank / 1000)`
+- **Bonus synergie** : +15 par tag Commander trouvé dans `oracle_text` (via `TAG_TO_PATTERN`)
+- **Bonus multi-rôle** : +10 par rôle fonctionnel supplémentaire couvert (ramp ET draw, etc.)
 
 ### Requêtes Scryfall importantes
-- `id<=WUB` = identité de couleur ≤ WUB (cartes jouables dans ce Commander)
+- `id<=WUB` = identité de couleur ≤ WUB
 - `format:commander` = légal en Commander
 - `order=edhrec` = tri par popularité Commander
 - `eur<=X` = prix Cardmarket ≤ X€
-- **Attention** : `t:instant,sorcery` en Scryfall = ET (impossible). Toujours utiliser `(type:instant OR type:sorcery)` ou des requêtes séparées.
+- `otag:TAG` = oracle tag Scryfall (ex: `otag:sacrifice`, `otag:reanimate-creature`)
+- **Attention** : `t:instant,sorcery` en Scryfall = ET (impossible). Toujours `(type:instant OR type:sorcery)`.
 
 ---
 
@@ -67,14 +82,15 @@ commander-optimizer/
 
 | Fonction | Endpoint | Usage |
 |----------|----------|-------|
-| `getCommander(name)` | `/cards/named?fuzzy=` | Récupère une carte par nom approx. |
+| `getCommander(name)` | `/cards/named?exact=` + fuzzy fallback | Récupère une carte par nom |
 | `autocomplete(query)` | `/cards/autocomplete?q=` | Suggestions de noms |
 | `searchCards(query)` | `/cards/search?q=&order=edhrec` | Recherche filtrée |
+| `getTaggerOracleTags(card)` | `tagger.scryfall.com/graphql` | Oracle tags du Commander (GraphQL + CSRF) |
 | `colorIdentityQuery(colors)` | — | Génère `id<=WUBGR` |
 | `getEurPrice(card)` | — | Prix `.prices.eur` en float |
 | `getCardImage(card)` | — | URL image (gère les double-faces) |
 
-**Pas de clé API requise.** Rate limit Scryfall : 10 req/s. Les appels sont séquentiels dans `generateDeck()`.
+**Pas de clé API requise.** Rate limit Scryfall : 10 req/s. `getTaggerOracleTags` fait 2 requêtes HTTP (GET page + POST GraphQL).
 
 ---
 
@@ -89,11 +105,11 @@ commander-optimizer/
 ## Points d'amélioration identifiés (backlog)
 
 - [ ] Import de collection (CSV Moxfield/Archidekt) pour filtrer sur les cartes possédées
-- [ ] Prise en compte du Commander dans les requêtes de synergie (mots-clés dans son oracle text)
 - [ ] Pagination Scryfall pour augmenter le pool de candidats (actuellement page 1 = 175 cartes max)
 - [ ] Cache des résultats Scryfall pour éviter les appels répétés (même Commander/budget)
 - [ ] Modèle freemium : fonctionnalités avancées derrière auth (NextAuth + Supabase)
-- [ ] Déploiement Vercel (zero-config avec ce stack)
+- [x] Prise en compte du Commander dans les requêtes de synergie → oracle tags via Tagger Scryfall
+- [x] Déploiement Vercel (zero-config avec ce stack)
 
 ---
 
@@ -105,4 +121,4 @@ npm run dev
 # → http://localhost:3000
 ```
 
-Aucune variable d'environnement requise pour le MVP.
+Aucune variable d'environnement requise.

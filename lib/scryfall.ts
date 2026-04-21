@@ -41,11 +41,9 @@ export interface ScryfallCard {
 
 // Récupère un Commander par son nom exact ou approximatif
 export async function getCommander(name: string): Promise<ScryfallCard> {
-  // Essayer d'abord une recherche exacte (plus fiable pour les noms de l'autocomplete)
   const exactRes = await fetchWithRetry(`${BASE}/cards/named?exact=${encodeURIComponent(name)}`);
   if (exactRes.ok) return exactRes.json();
 
-  // Fallback sur recherche fuzzy
   const fuzzyRes = await fetchWithRetry(`${BASE}/cards/named?fuzzy=${encodeURIComponent(name)}`);
   if (fuzzyRes.ok) return fuzzyRes.json();
 
@@ -69,20 +67,6 @@ export async function searchCards(query: string): Promise<ScryfallCard[]> {
   return data.data || [];
 }
 
-// Récupère plusieurs cartes par nom en une seule requête (max 75 noms)
-export async function fetchCardsByNames(names: string[]): Promise<ScryfallCard[]> {
-  if (names.length === 0) return [];
-  const identifiers = names.slice(0, 75).map(name => ({ name }));
-  const res = await fetchWithRetry(`${BASE}/cards/collection`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ identifiers }),
-  });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.data || [];
-}
-
 // Formate l'identité de couleur pour les requêtes Scryfall
 export function colorIdentityQuery(colors: string[]): string {
   if (colors.length === 0) return 'id:colorless';
@@ -101,37 +85,51 @@ export function getEurPrice(card: ScryfallCard): number {
   return parseFloat(card.prices?.eur || '0') || 0;
 }
 
-// Convertit un nom de carte en slug EDHREC (ex: "Miirym, Sentinel Wyrm" → "miirym-sentinel-wyrm")
-export function toEdhrecSlug(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-');
-}
-
-// Récupère les noms de cartes recommandées par EDHREC pour un commander, triées par synergie
-export async function getEdhrecRecommendations(commanderName: string): Promise<string[]> {
-  const slug = toEdhrecSlug(commanderName);
+// Récupère les oracle tags du Commander via le Tagger Scryfall (GraphQL non documenté)
+export async function getTaggerOracleTags(card: ScryfallCard): Promise<string[]> {
   try {
-    const res = await fetch(`https://json.edhrec.com/pages/commanders/${slug}.json`);
-    if (!res.ok) return [];
-    const data = await res.json();
-    const cardlists: Array<{ cardviews?: Array<{ name: string; synergy?: number }> }> =
-      data?.container?.json_dict?.cardlists ?? [];
-    const seen = new Set<string>();
-    const cards: Array<{ name: string; synergy: number }> = [];
-    for (const list of cardlists) {
-      for (const cv of list.cardviews ?? []) {
-        if (cv.name && !seen.has(cv.name)) {
-          seen.add(cv.name);
-          cards.push({ name: cv.name, synergy: cv.synergy ?? 0 });
-        }
-      }
-    }
-    // Trier par synergie décroissante
-    cards.sort((a, b) => b.synergy - a.synergy);
-    return cards.map(c => c.name);
+    // Récupère le token CSRF + session cookie depuis la page Tagger
+    const pageRes = await fetch('https://tagger.scryfall.com/', { headers: HEADERS });
+    if (!pageRes.ok) return [];
+    const html = await pageRes.text();
+    const csrfMatch = html.match(/name="csrf-token"\s+content="([^"]+)"/);
+    if (!csrfMatch) return [];
+    const csrfToken = csrfMatch[1];
+
+    // Extrait les cookies de session (getSetCookie disponible en Node 18+)
+    const rawCookies: string[] =
+      typeof (pageRes.headers as any).getSetCookie === 'function'
+        ? (pageRes.headers as any).getSetCookie()
+        : [pageRes.headers.get('set-cookie') ?? ''];
+    const cookieHeader = rawCookies.map(c => c.split(';')[0]).filter(Boolean).join('; ');
+
+    const gqlRes = await fetch('https://tagger.scryfall.com/graphql', {
+      method: 'POST',
+      headers: {
+        ...HEADERS,
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken,
+        'Cookie': cookieHeader,
+        'Referer': 'https://tagger.scryfall.com/',
+        'Origin': 'https://tagger.scryfall.com',
+      },
+      body: JSON.stringify({
+        query: `{ card(id: "${card.id}") { taggings { tag { slug } classifier } } }`,
+      }),
+    });
+    if (!gqlRes.ok) return [];
+    const data = await gqlRes.json();
+
+    const taggings: Array<{ tag: { slug: string }; classifier: string }> =
+      data?.data?.card?.taggings ?? [];
+
+    return taggings
+      .filter(t =>
+        t.classifier === 'ORACLE_CARD_TAG' &&
+        !t.tag.slug.startsWith('cycle-') &&
+        t.tag.slug !== 'oversized'
+      )
+      .map(t => t.tag.slug);
   } catch {
     return [];
   }
