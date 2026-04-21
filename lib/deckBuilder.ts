@@ -143,7 +143,8 @@ const log = {
 
 export interface ProgressEvent {
   step: string;
-  cardImage?: string; // URL de l'image d'une carte ajoutée
+  cardImage?: string;
+  upgradeOldImage?: string;
 }
 
 // ─── generateDeck ──────────────────────────────────────────────────────────
@@ -190,18 +191,29 @@ export async function generateDeck(
   const allDeckCards: DeckCard[] = [];
   let totalPrice = 0;
 
-  // Helper pour notifier une carte ajoutée avec délai pour l'animation
-  const cardQueue: string[] = [];
+  type QueueItem = string | { oldImg: string; newImg: string };
+  const cardQueue: QueueItem[] = [];
   let isProcessingQueue = false;
 
   const processCardQueue = async () => {
     if (isProcessingQueue) return;
     isProcessingQueue = true;
     while (cardQueue.length > 0) {
-      const img = cardQueue.shift();
-      if (img) {
-        onProgress?.({ step: 'card', cardImage: img });
-        await new Promise(resolve => setTimeout(resolve, 150)); // 150ms entre chaque carte
+      if (cardQueue.length > 5) {
+        const batch = cardQueue.splice(0, 3);
+        for (const item of batch) {
+          const img = typeof item === 'string' ? item : item.newImg;
+          const oldImg = typeof item === 'object' ? item.oldImg : undefined;
+          onProgress?.({ step: 'card', cardImage: img, ...(oldImg && { upgradeOldImage: oldImg }) });
+        }
+        await new Promise(resolve => setTimeout(resolve, 300));
+      } else {
+        const item = cardQueue.shift()!;
+        const isUpgrade = typeof item === 'object';
+        const img = isUpgrade ? item.newImg : item;
+        const oldImg = isUpgrade ? item.oldImg : undefined;
+        onProgress?.({ step: 'card', cardImage: img, ...(oldImg && { upgradeOldImage: oldImg }) });
+        await new Promise(resolve => setTimeout(resolve, isUpgrade ? 900 : 200));
       }
     }
     isProcessingQueue = false;
@@ -215,8 +227,26 @@ export async function generateDeck(
     }
   };
 
+  const notifyUpgrade = (oldCard: ScryfallCard, newCard: ScryfallCard) => {
+    const oldImg = oldCard.image_uris?.small || oldCard.card_faces?.[0]?.image_uris?.small;
+    const newImg = newCard.image_uris?.small || newCard.card_faces?.[0]?.image_uris?.small;
+    if (newImg) {
+      cardQueue.push(oldImg ? { oldImg, newImg } : newImg);
+      processCardQueue();
+    }
+  };
+
+  const waitForAnimations = async () => {
+    if (cardQueue.length === 0 && !isProcessingQueue) return;
+    while (cardQueue.length > 0 || isProcessingQueue) {
+      await new Promise(r => setTimeout(r, 50));
+    }
+    await new Promise(r => setTimeout(r, 700)); // attend la fin de la dernière animation CSS
+  };
+
   // ── Remplir chaque slot ────────────────────────────────────────────────
   for (const slot of DECK_SLOTS) {
+    await waitForAnimations();
     onProgress?.({ step: slot.role });
     const slotStart = Date.now();
     const target = slot.role === 'Terrains non basiques'
@@ -311,6 +341,7 @@ export async function generateDeck(
   // ── Passe d'upgrade : utiliser le budget restant ─────────────────────────
   const upgradeThreshold = budgetEur * 0.10; // On upgrade si > 10% du budget reste
   if (remainingBudget > upgradeThreshold) {
+    await waitForAnimations();
     onProgress?.({ step: 'Upgrade' });
     const upgradeStart = Date.now();
     log.info(`Passe d'upgrade démarrée`, { budget_restant: `${remainingBudget.toFixed(2)}€`, seuil: `${upgradeThreshold.toFixed(2)}€` });
@@ -351,8 +382,8 @@ export async function generateDeck(
           const newPrice = getEurPrice(upgrade);
           const priceDiff = newPrice - candidate.eurPrice;
           const oldName = candidate.card.name;
+          const oldCard = candidate.card;
 
-          // Effectuer l'upgrade
           usedNames.delete(candidate.card.name);
           usedNames.add(upgrade.name);
           candidate.card = upgrade;
@@ -360,7 +391,7 @@ export async function generateDeck(
           totalPrice += priceDiff;
           remainingBudget -= priceDiff;
           upgradeCount++;
-          notifyCard(upgrade);
+          notifyUpgrade(oldCard, upgrade);
 
           log.info(`  Upgrade: ${oldName} → ${upgrade.name} (+${priceDiff.toFixed(2)}€)`);
         }
@@ -435,10 +466,10 @@ export async function generateDeck(
     log.warn(`Deck incomplet : ${totalCards}/99 cartes`);
   }
 
-  // Attendre que toutes les cartes soient envoyées pour l'animation
   while (cardQueue.length > 0 || isProcessingQueue) {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
+  await new Promise(resolve => setTimeout(resolve, 1800));
 
   return {
     commander,

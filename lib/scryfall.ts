@@ -1,5 +1,20 @@
 const BASE = 'https://api.scryfall.com';
 
+const HEADERS = { 'User-Agent': 'CommanderOptimizer/1.0 (contact: milsilv3r@gmail.com)' };
+
+async function fetchWithRetry(url: string, options?: RequestInit, retries = 3): Promise<Response> {
+  let lastRes: Response | null = null;
+  for (let i = 0; i < retries; i++) {
+    const res = await fetch(url, { ...options, headers: { ...HEADERS, ...(options?.headers ?? {}) } });
+    if (res.ok || (res.status !== 429 && res.status < 500)) return res;
+    lastRes = res;
+    const retryAfter = res.headers.get('Retry-After');
+    const delay = retryAfter ? parseInt(retryAfter) * 1000 : (i + 1) * 600;
+    await new Promise(r => setTimeout(r, delay));
+  }
+  return lastRes!;
+}
+
 export interface ScryfallCard {
   id: string;
   name: string;
@@ -27,11 +42,11 @@ export interface ScryfallCard {
 // Récupère un Commander par son nom exact ou approximatif
 export async function getCommander(name: string): Promise<ScryfallCard> {
   // Essayer d'abord une recherche exacte (plus fiable pour les noms de l'autocomplete)
-  const exactRes = await fetch(`${BASE}/cards/named?exact=${encodeURIComponent(name)}`);
+  const exactRes = await fetchWithRetry(`${BASE}/cards/named?exact=${encodeURIComponent(name)}`);
   if (exactRes.ok) return exactRes.json();
 
   // Fallback sur recherche fuzzy
-  const fuzzyRes = await fetch(`${BASE}/cards/named?fuzzy=${encodeURIComponent(name)}`);
+  const fuzzyRes = await fetchWithRetry(`${BASE}/cards/named?fuzzy=${encodeURIComponent(name)}`);
   if (fuzzyRes.ok) return fuzzyRes.json();
 
   throw new Error(`Commander "${name}" introuvable`);
@@ -39,7 +54,7 @@ export async function getCommander(name: string): Promise<ScryfallCard> {
 
 // Autocomplete pour la recherche de Commander
 export async function autocomplete(query: string): Promise<string[]> {
-  const res = await fetch(`${BASE}/cards/autocomplete?q=${encodeURIComponent(query)}`);
+  const res = await fetchWithRetry(`${BASE}/cards/autocomplete?q=${encodeURIComponent(query)}`);
   if (!res.ok) return [];
   const data = await res.json();
   return data.data || [];
@@ -48,7 +63,7 @@ export async function autocomplete(query: string): Promise<string[]> {
 // Cherche des cartes avec un filtre Scryfall
 export async function searchCards(query: string): Promise<ScryfallCard[]> {
   const url = `${BASE}/cards/search?q=${encodeURIComponent(query)}&order=edhrec&dir=asc`;
-  const res = await fetch(url);
+  const res = await fetchWithRetry(url);
   if (!res.ok) return [];
   const data = await res.json();
   return data.data || [];
@@ -58,7 +73,7 @@ export async function searchCards(query: string): Promise<ScryfallCard[]> {
 export async function fetchCardsByNames(names: string[]): Promise<ScryfallCard[]> {
   if (names.length === 0) return [];
   const identifiers = names.slice(0, 75).map(name => ({ name }));
-  const res = await fetch(`${BASE}/cards/collection`, {
+  const res = await fetchWithRetry(`${BASE}/cards/collection`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ identifiers }),

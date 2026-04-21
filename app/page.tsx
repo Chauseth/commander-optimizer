@@ -122,7 +122,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState<string | null>(null);
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
-  const [cardImages, setCardImages] = useState<Array<{ id: number; src: string }>>([]);
+  const [cardImages, setCardImages] = useState<Array<{ id: number; src: string; ejecting?: boolean }>>([]);
   const [showCards, setShowCards] = useState(false);
   const cardIdRef = useRef(0);
   const [deck, setDeck] = useState<DeckResult | null>(null);
@@ -185,7 +185,19 @@ export default function Home() {
             });
           } else if (event.type === 'card' && event.image) {
             const id = ++cardIdRef.current;
-            setCardImages(prev => [...prev, { id, src: event.image }]); // Garder toutes les cartes pour le deck
+            setCardImages(prev => [...prev, { id, src: event.image }]);
+          } else if (event.type === 'upgrade' && event.newImage) {
+            setCardImages(prev => {
+              const idx = prev.findLastIndex(c => c.src === event.oldImage && !c.ejecting);
+              const target = idx !== -1 ? idx : prev.findLastIndex(c => !c.ejecting);
+              if (target === -1) return prev;
+              return prev.map((c, i) => i === target ? { ...c, ejecting: true } : c);
+            });
+            const newId = ++cardIdRef.current;
+            const newSrc = event.newImage;
+            setTimeout(() => {
+              setCardImages(prev => [...prev.filter(c => !c.ejecting), { id: newId, src: newSrc }]);
+            }, 550);
           } else if (event.type === 'done') {
             setCompletedSteps(STEPS.map(s => s.key));
             setCurrentStep(null);
@@ -322,42 +334,6 @@ export default function Home() {
             {loading ? '⚙️ Génération...' : '🎲 Générer'}
           </button>
 
-          {/* Progress */}
-          {loading && (
-            <div className="bg-gray-900/80 rounded-xl border border-gray-800 p-4">
-              <p className="text-xs text-gray-400 mb-3 uppercase tracking-wider">Progression</p>
-              <div className="space-y-1.5">
-                {STEPS.filter(s => s.key !== 'done').map(step => {
-                  const done = completedSteps.includes(step.key);
-                  const active = currentStep === step.key;
-                  return (
-                    <div key={step.key} className="flex items-center gap-2">
-                      <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 text-[10px] transition-all duration-300 ${
-                        done    ? 'bg-green-500 text-black'  :
-                        active  ? 'bg-amber-500 text-black animate-pulse' :
-                                  'bg-gray-800 text-gray-600'
-                      }`}>
-                        {done ? '✓' : active ? '⚙' : '·'}
-                      </div>
-                      <span className={`text-xs transition-colors duration-300 ${
-                        done   ? 'text-gray-500 line-through' :
-                        active ? 'text-white font-medium'    :
-                                 'text-gray-600'
-                      }`}>
-                        {step.label}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="mt-3 h-1 bg-gray-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-amber-500 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.round((completedSteps.length / (STEPS.length - 1)) * 100)}%` }}
-                />
-              </div>
-            </div>
-          )}
         </div>
       </aside>
 
@@ -365,15 +341,49 @@ export default function Home() {
       <main className="flex-1 min-h-screen relative overflow-hidden">
         {/* Animation des cartes qui forment un deck */}
         {showCards && cardImages.length > 0 && !deck && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="relative" style={{ width: '160px', height: '224px' }}>
-              {cardImages.map(({ id, src }, index) => {
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-10 pointer-events-none">
+            {/* Progress au-dessus */}
+            {loading && (
+              <div className="flex flex-col items-center gap-3 w-72">
+                <div className="flex items-center gap-2 text-sm text-white font-medium">
+                  <span className="w-4 h-4 rounded-full border-2 border-amber-500 border-t-transparent animate-spin inline-block" />
+                  {STEPS.find(s => s.key === currentStep)?.label ?? 'Finalisation…'}
+                </div>
+                <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-amber-500 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.round((completedSteps.length / (STEPS.length - 1)) * 100)}%` }}
+                  />
+                </div>
+                <div className="flex gap-1.5">
+                  {STEPS.filter(s => s.key !== 'done').map(step => {
+                    const done = completedSteps.includes(step.key);
+                    const active = currentStep === step.key;
+                    return (
+                      <div
+                        key={step.key}
+                        title={step.label}
+                        className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                          done   ? 'bg-green-500' :
+                          active ? 'bg-amber-400 scale-125' :
+                                   'bg-gray-700'
+                        }`}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Pile de cartes */}
+            <div className="relative" style={{ width: '220px', height: '308px' }}>
+              {cardImages.map(({ id, src, ejecting }, index) => {
                 const directions = [
                   'from-top', 'from-top-right', 'from-right', 'from-bottom-right',
                   'from-bottom', 'from-bottom-left', 'from-left', 'from-top-left'
                 ];
                 const direction = directions[id % directions.length];
-                const stackOffset = Math.min(index, 20) * 0.4;
+                const stackOffset = Math.min(index, 20) * 0.5;
                 const rotation = ((id % 7) - 3) * 1.5;
 
                 return (
@@ -381,19 +391,19 @@ export default function Home() {
                     key={id}
                     src={src}
                     alt=""
-                    className={`card-to-deck absolute w-full rounded-xl shadow-2xl ${direction}`}
+                    className={`absolute w-full rounded-xl ${ejecting ? 'card-ejecting' : `card-to-deck ${direction}`}`}
                     style={{
                       top: -stackOffset,
                       left: stackOffset,
                       transform: `rotate(${rotation}deg)`,
-                      zIndex: index,
+                      zIndex: ejecting ? 999 : index,
                     }}
                   />
                 );
               })}
               {/* Compteur de cartes */}
-              <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 text-center">
-                <span className="text-3xl font-bold text-amber-400">{cardImages.length}</span>
+              <div className="absolute -bottom-20 left-1/2 -translate-x-1/2 text-center">
+                <span className="text-4xl font-bold text-amber-400">{Math.min(cardImages.length, 99)}</span>
                 <span className="text-gray-500 text-sm ml-1">/ 99</span>
               </div>
             </div>

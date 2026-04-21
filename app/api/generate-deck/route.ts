@@ -48,7 +48,11 @@ export async function POST(req: NextRequest) {
 
         const deck = await generateDeck(commander, budgetNum, (event: ProgressEvent) => {
           if (event.cardImage) {
-            send(controller, { type: 'card', image: event.cardImage });
+            if (event.upgradeOldImage) {
+              send(controller, { type: 'upgrade', oldImage: event.upgradeOldImage, newImage: event.cardImage });
+            } else {
+              send(controller, { type: 'card', image: event.cardImage });
+            }
           } else {
             send(controller, { type: 'progress', step: event.step });
           }
