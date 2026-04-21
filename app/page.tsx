@@ -64,7 +64,7 @@ function CardSmall({ card, eurPrice, count, isSynergy }: { card: CardData; eurPr
             <span className="text-amber-500 font-semibold mr-1.5">{count}×</span>
           )}
           {isSynergy && (
-            <span className="text-purple-400 mr-1 text-xs" title="Recommandé par EDHREC">✦</span>
+            <span className="text-purple-400 mr-1 text-xs" title="Synergique">✦</span>
           )}
           {card.name}
         </span>
@@ -93,12 +93,12 @@ function CardSmall({ card, eurPrice, count, isSynergy }: { card: CardData; eurPr
 
 const STEPS = [
   { key: 'commander',        label: 'Recherche du commander'      },
-  { key: 'edhrec',           label: 'Recommandations EDHREC'      },
+  { key: 'tagger',           label: 'Tags Scryfall Tagger'        },
   { key: 'Rampe',            label: 'Rampe (mana)'                },
   { key: 'Pioche',           label: 'Pioche (card draw)'          },
   { key: 'Suppression',      label: 'Suppression (removal)'       },
   { key: 'Balayage',         label: 'Balayage (wipes)'            },
-  { key: 'Synergie',         label: 'Cartes synergiques (EDHREC)'  },
+  { key: 'Synergie',         label: 'Cartes synergiques'           },
   { key: 'Terrains non basiques', label: 'Terrains non basiques'       },
   { key: 'Upgrade',          label: 'Optimisation budget'         },
   { key: 'done',             label: 'Finalisation'                },
