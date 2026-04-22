@@ -7,9 +7,15 @@ export type Archetype =
   | 'spellslinger'
   | 'aristocrats'
   | 'reanimator'
+  | 'lands'
   | 'control'
   | 'combo-tutor'
   | 'tokens'
+  | 'wheel'
+  | 'enchantress'
+  | 'aura-voltron'
+  | 'equipment-voltron'
+  | 'blink'
   | 'tribal'
   | 'aggro-cheap'
   | 'lifegain'
@@ -25,18 +31,24 @@ interface ArchetypeModifier {
 }
 
 export const ARCHETYPE_MODIFIERS: Record<Archetype, ArchetypeModifier> = {
-  'stax':            { rampe:  0, pioche:  0, suppression: +2, balayage: +1, baseCurve: 3.0 },
-  'spellslinger':    { rampe:  0, pioche: +2, suppression: +1, balayage:  0, baseCurve: 2.7 },
-  'aristocrats':     { rampe:  0, pioche: +1, suppression: -1, balayage: -1, baseCurve: 2.9 },
-  'reanimator':      { rampe:  0, pioche: +1, suppression:  0, balayage: -1, baseCurve: 3.0 },
-  'control':         { rampe: +1, pioche: +2, suppression: +2, balayage: +1, baseCurve: 3.3 },
-  'combo-tutor':     { rampe: +1, pioche: +2, suppression: -1, balayage: -2, baseCurve: 2.7 },
-  'tokens':          { rampe: -1, pioche:  0, suppression: -1, balayage: -2, baseCurve: 2.5 },
-  'tribal':          { rampe: -1, pioche:  0, suppression: -1, balayage: -1, baseCurve: 2.7 },
-  'aggro-cheap':     { rampe:  0, pioche:  0, suppression: -1, balayage: -2, baseCurve: 2.3 },
-  'lifegain':        { rampe:  0, pioche:  0, suppression:  0, balayage:  0, baseCurve: 2.9 },
-  '+1/+1-counters':  { rampe:  0, pioche:  0, suppression:  0, balayage:  0, baseCurve: 2.9 },
-  'default':         { rampe:  0, pioche:  0, suppression:  0, balayage:  0, baseCurve: 2.9 },
+  'stax':              { rampe: +2, pioche:  0, suppression: +2, balayage: +1, baseCurve: 3.0 },
+  'spellslinger':      { rampe:  0, pioche: +2, suppression: +1, balayage:  0, baseCurve: 2.7 },
+  'aristocrats':       { rampe:  0, pioche: +1, suppression: -1, balayage: -1, baseCurve: 2.9 },
+  'reanimator':        { rampe:  0, pioche: +1, suppression:  0, balayage: -1, baseCurve: 3.0 },
+  'lands':             { rampe: +4, pioche:  0, suppression: -2, balayage: -1, baseCurve: 3.2 },
+  'control':           { rampe: +1, pioche: +2, suppression: +2, balayage: +1, baseCurve: 3.3 },
+  'combo-tutor':       { rampe: +1, pioche: +2, suppression: -1, balayage: -2, baseCurve: 2.7 },
+  'tokens':            { rampe: -1, pioche:  0, suppression: -1, balayage: -2, baseCurve: 2.5 },
+  'wheel':             { rampe:  0, pioche: +2, suppression:  0, balayage: +1, baseCurve: 2.8 },
+  'enchantress':       { rampe: -1, pioche: +2, suppression: -1, balayage: -1, baseCurve: 2.5 },
+  'aura-voltron':      { rampe: -3, pioche:  0, suppression: -2, balayage: -3, baseCurve: 2.2 },
+  'equipment-voltron': { rampe: -2, pioche:  0, suppression: -1, balayage: -2, baseCurve: 2.4 },
+  'blink':             { rampe:  0, pioche: +1, suppression: -1, balayage:  0, baseCurve: 3.0 },
+  'tribal':            { rampe: -1, pioche:  0, suppression: -1, balayage: -1, baseCurve: 2.7 },
+  'aggro-cheap':       { rampe:  0, pioche:  0, suppression: -1, balayage: -2, baseCurve: 2.3 },
+  'lifegain':          { rampe:  0, pioche:  0, suppression:  0, balayage:  0, baseCurve: 2.9 },
+  '+1/+1-counters':    { rampe:  0, pioche:  0, suppression:  0, balayage:  0, baseCurve: 2.9 },
+  'default':           { rampe:  0, pioche:  0, suppression:  0, balayage:  0, baseCurve: 2.9 },
 };
 
 export function detectArchetype(commander: ScryfallCard, oracleTags: string[]): Archetype {
@@ -44,7 +56,14 @@ export function detectArchetype(commander: ScryfallCard, oracleTags: string[]): 
   const cmc = commander.cmc ?? 0;
   const tags = new Set(oracleTags);
 
-  if (/\bcan't\b/i.test(text) || /\bdoesn't untap\b/i.test(text) || /\bpay \{[0-9]\}\b/.test(text)) {
+  // Stax : effets de taxe ou de verrouillage (évite le faux positif sur "can't be targeted")
+  if (
+    tags.has('stax') || tags.has('tax') ||
+    /\bspells.{0,30}cost \{[1-9]\} more\b/i.test(text) ||
+    /\bdoesn't untap\b/i.test(text) ||
+    /\bdon't untap\b/i.test(text) ||
+    /\bcan't attack (or|and can't) block\b/i.test(text)
+  ) {
     return 'stax';
   }
 
@@ -60,6 +79,16 @@ export function detectArchetype(commander: ScryfallCard, oracleTags: string[]): 
     return 'reanimator';
   }
 
+  // Lands : commandants qui profitent des terrains qui arrivent ou permettent des poses supplémentaires
+  if (
+    tags.has('landfall') ||
+    /\blandfall\b/i.test(text) ||
+    /\bwhenever (a|one or more) lands? enters\b/i.test(text) ||
+    /\byou may play (a |an |one |two |up to \w+ )?additional lands?\b/i.test(text)
+  ) {
+    return 'lands';
+  }
+
   if (/\bcounter target\b/i.test(text) || (cmc >= 4 && /\bdraw\b.*\beach\b/i.test(text))) {
     return 'control';
   }
@@ -70,6 +99,53 @@ export function detectArchetype(commander: ScryfallCard, oracleTags: string[]): 
 
   if (tags.has('token-generation') || /\bcreate\b.*\btoken\b/i.test(text)) {
     return 'tokens';
+  }
+
+  // Wheel : commandants qui font piocher/défausser tous les joueurs
+  if (
+    tags.has('wheel') ||
+    /\beach (player|opponent) draws\b/i.test(text) ||
+    /\bwhenever a player draws\b/i.test(text) ||
+    /\beach player discards\b/i.test(text)
+  ) {
+    return 'wheel';
+  }
+
+  // Enchantress : moteur de pioche basé sur les enchantements
+  if (
+    tags.has('enchantress') ||
+    /\bwhenever you cast an enchantment\b/i.test(text) ||
+    /\bwhenever an enchantment (enters|you control)\b/i.test(text)
+  ) {
+    return 'enchantress';
+  }
+
+  // Aura-voltron : tutore des auras ou grossit grâce aux auras attachées
+  const hasAuraTag = tags.has('aura') || tags.has('voltron');
+  const hasAuraText = /\baura\b/i.test(text) && (
+    /\bsearch your library\b/i.test(text) ||
+    /\bfor each aura\b/i.test(text) ||
+    /\bwhenever you cast an? aura\b/i.test(text)
+  );
+  if (hasAuraTag || hasAuraText) return 'aura-voltron';
+
+  // Equipment-voltron : stratégie centrée sur les équipements
+  if (
+    tags.has('equipment') ||
+    /\bfor each equipment\b/i.test(text) ||
+    /\bwhenever.{0,40}equipped\b/i.test(text) ||
+    /\bsearch your library for an? equipment\b/i.test(text) ||
+    /\battach any number of.{0,40}equipment\b/i.test(text)
+  ) {
+    return 'equipment-voltron';
+  }
+
+  // Blink : exiler ses propres permanents pour les faire revenir avec leurs ETB
+  if (
+    tags.has('blink') || tags.has('flicker') ||
+    (/\bwhenever\b/i.test(text) && /\bexile\b/i.test(text) && /\breturn (it|them|those cards)\b.*\bbattlefield\b/i.test(text))
+  ) {
+    return 'blink';
   }
 
   const subtypePart = commander.type_line?.split('—')[1];
