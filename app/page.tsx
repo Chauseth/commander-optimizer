@@ -129,6 +129,7 @@ export default function Home() {
   const [error, setError] = useState('');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [counts, setCounts] = useState<Record<string, number>>({ ...DEFAULT_COUNTS });
+  const [hasModifiedCounts, setHasModifiedCounts] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const nonLandTotal = SLOT_CONFIG.reduce((s, sl) => s + (counts[sl.key] ?? 0), 0);
@@ -162,7 +163,7 @@ export default function Home() {
       const res = await fetch('/api/generate-deck', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ commanderName: commander, budget, slotCounts: counts }),
+        body: JSON.stringify({ commanderName: commander, budget, slotCounts: hasModifiedCounts ? counts : undefined }),
       });
       if (!res.body) throw new Error('Pas de réponse du serveur');
       const reader = res.body.getReader();
@@ -279,13 +280,33 @@ export default function Home() {
             </button>
             {advancedOpen && (
               <div className="px-3 pb-3 pt-2 bg-gray-900 border-t border-gray-800">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-gray-500">Composition</span>
-                  <span className={`text-xs font-semibold tabular-nums ${total > 99 ? 'text-red-400' : total === 99 ? 'text-green-400' : 'text-amber-400'}`}>
-                    {total}/99
-                  </span>
+                {/* Toggle Auto / Manuel */}
+                <div className="flex items-center gap-1 p-0.5 bg-gray-800 rounded-lg mb-3">
+                  <button
+                    type="button"
+                    onClick={() => { setCounts({ ...DEFAULT_COUNTS }); setHasModifiedCounts(false); }}
+                    className={`flex-1 text-xs py-1 rounded-md transition-colors font-medium ${!hasModifiedCounts ? 'bg-amber-500 text-black' : 'text-gray-400 hover:text-gray-200'}`}
+                  >
+                    Auto
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHasModifiedCounts(true)}
+                    className={`flex-1 text-xs py-1 rounded-md transition-colors font-medium ${hasModifiedCounts ? 'bg-gray-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+                  >
+                    Manuel
+                  </button>
                 </div>
-                <div className="space-y-3">
+                {!hasModifiedCounts && (
+                  <p className="text-xs text-gray-500 mb-3 text-center">Répartition calculée selon l'archétype du Commander</p>
+                )}
+                <div className={`space-y-3 ${!hasModifiedCounts ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-500">Composition</span>
+                    <span className={`text-xs font-semibold tabular-nums ${total > 99 ? 'text-red-400' : total === 99 ? 'text-green-400' : 'text-amber-400'}`}>
+                      {total}/99
+                    </span>
+                  </div>
                   {SLOT_CONFIG.map(slot => (
                     <div key={slot.key}>
                       <div className="flex items-center justify-between">
@@ -298,7 +319,7 @@ export default function Home() {
                         min={slot.min}
                         max={slot.max}
                         value={counts[slot.key]}
-                        onChange={e => setCounts(prev => ({ ...prev, [slot.key]: Number(e.target.value) }))}
+                        onChange={e => { setCounts(prev => ({ ...prev, [slot.key]: Number(e.target.value) })); setHasModifiedCounts(true); }}
                         className="w-full h-1 accent-amber-500 cursor-pointer"
                       />
                     </div>
@@ -314,18 +335,11 @@ export default function Home() {
                       min={28}
                       max={45}
                       value={counts.totalLands}
-                      onChange={e => setCounts(prev => ({ ...prev, totalLands: Number(e.target.value) }))}
+                      onChange={e => { setCounts(prev => ({ ...prev, totalLands: Number(e.target.value) })); setHasModifiedCounts(true); }}
                       className="w-full h-1 accent-amber-500 cursor-pointer"
                     />
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setCounts({ ...DEFAULT_COUNTS })}
-                  className="mt-2 text-xs text-gray-500 hover:text-gray-300 underline"
-                >
-                  Reset
-                </button>
               </div>
             )}
           </div>
