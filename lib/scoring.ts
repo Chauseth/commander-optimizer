@@ -40,7 +40,7 @@ export function scoreCard(
 
   const text = card.oracle_text ?? '';
   const synergyMatches = commanderTags.filter(tag => TAG_TO_PATTERN[tag]?.test(text)).length;
-  const synergyBonus = synergyMatches * 15;
+  const synergyBonus = synergyMatches * 25;
 
   const extraRoles = [...detectedRoles].filter(r => r !== targetRole).length;
   const roleBonus = extraRoles * 10;

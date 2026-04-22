@@ -252,3 +252,163 @@ export function adjustLandsForActualCurve(
   const newSynergie = counts.Synergie - landDelta;
   return { ...counts, totalLands: newTotalLands, Synergie: newSynergie };
 }
+
+export const ARCHETYPE_SLOT_QUERIES: Partial<Record<
+  Archetype,
+  Partial<Record<'Rampe' | 'Pioche' | 'Suppression' | 'Balayage', ((ci: string) => string)[]>>
+>> = {
+  'aristocrats': {
+    Rampe: [
+      (ci) => `o:"sacrifice" o:"add {" ${ci} format:commander`,
+    ],
+    Pioche: [
+      (ci) => `o:"dies" o:"draw" ${ci} format:commander`,
+      (ci) => `o:"sacrifice" o:"draw" ${ci} format:commander`,
+    ],
+    Suppression: [
+      (ci) => `o:"each player sacrifices" type:sorcery ${ci} format:commander`,
+      (ci) => `o:"each player sacrifices" type:creature ${ci} format:commander`,
+      (ci) => `o:"sacrifice a creature" type:instant ${ci} format:commander`,
+    ],
+  },
+  'reanimator': {
+    Pioche: [
+      (ci) => `o:"discard" o:"draw" (type:instant OR type:sorcery) ${ci} format:commander`,
+      (ci) => `o:"mill" o:"draw" ${ci} format:commander`,
+    ],
+    Suppression: [
+      (ci) => `o:"sacrifice" (type:instant OR type:sorcery) ${ci} format:commander`,
+    ],
+  },
+  'spellslinger': {
+    Rampe: [
+      (ci) => `o:"add {" (type:instant OR type:sorcery) ${ci} format:commander`,
+    ],
+    Pioche: [
+      (ci) => `o:"whenever you cast" o:"draw" ${ci} format:commander`,
+      (ci) => `o:"magecraft" ${ci} format:commander`,
+    ],
+    Balayage: [
+      (ci) => `o:"overload" ${ci} format:commander`,
+    ],
+  },
+  'lands': {
+    Rampe: [
+      (ci) => `o:"search your library" o:"land card" ${ci} format:commander`,
+      (ci) => `o:"play an additional land" ${ci} format:commander`,
+      (ci) => `o:"put" o:"land" o:"onto the battlefield" ${ci} format:commander`,
+    ],
+    Pioche: [
+      (ci) => `o:"landfall" o:"draw" ${ci} format:commander`,
+      (ci) => `o:"whenever a land" o:"draw" ${ci} format:commander`,
+    ],
+  },
+  'enchantress': {
+    Rampe: [
+      (ci) => `o:"add {" type:enchantment ${ci} format:commander`,
+    ],
+    Pioche: [
+      (ci) => `o:"whenever you cast an enchantment" o:"draw" ${ci} format:commander`,
+      (ci) => `o:"whenever an enchantment" o:"draw" ${ci} format:commander`,
+      (ci) => `otag:enchantress ${ci} format:commander`,
+    ],
+    Suppression: [
+      (ci) => `(o:"destroy target" OR o:"exile target") type:enchantment ${ci} format:commander`,
+    ],
+  },
+  'blink': {
+    Pioche: [
+      (ci) => `o:"enters" o:"draw" type:creature ${ci} format:commander`,
+      (ci) => `o:"enters the battlefield" o:"draw" ${ci} format:commander`,
+    ],
+    Suppression: [
+      (ci) => `o:"enters" o:"destroy target" type:creature ${ci} format:commander`,
+      (ci) => `o:"enters" o:"exile target" type:creature ${ci} format:commander`,
+      (ci) => `o:"enters the battlefield" (o:"destroy target" OR o:"exile target") ${ci} format:commander`,
+    ],
+  },
+  'tokens': {
+    Rampe: [
+      (ci) => `o:"sacrifice" o:"add {" ${ci} format:commander`,
+    ],
+    Pioche: [
+      (ci) => `o:"token" o:"draw" ${ci} format:commander`,
+      (ci) => `o:"creature you control" o:"draw" ${ci} format:commander`,
+    ],
+    Suppression: [
+      (ci) => `o:"sacrifice a creature" (type:instant OR type:sorcery) ${ci} format:commander`,
+    ],
+    Balayage: [
+      (ci) => `o:"non-token" o:"destroy" type:sorcery ${ci} format:commander`,
+    ],
+  },
+  'control': {
+    Pioche: [
+      (ci) => `o:"draw" o:"card" type:instant ${ci} format:commander`,
+    ],
+    Suppression: [
+      (ci) => `o:"counter target" type:instant ${ci} format:commander`,
+      (ci) => `(o:"destroy target" OR o:"exile target") type:instant ${ci} format:commander`,
+    ],
+    Balayage: [
+      (ci) => `o:"destroy all creatures" type:sorcery ${ci} format:commander`,
+      (ci) => `o:"exile all" type:sorcery ${ci} format:commander`,
+    ],
+  },
+  'wheel': {
+    Pioche: [
+      (ci) => `o:"each player draws" ${ci} format:commander`,
+      (ci) => `o:"discard" o:"draw" ${ci} format:commander`,
+    ],
+  },
+  'equipment-voltron': {
+    Pioche: [
+      (ci) => `o:"whenever" o:"equipped" o:"draw" ${ci} format:commander`,
+      (ci) => `o:"draw" o:"card" type:artifact ${ci} format:commander`,
+    ],
+  },
+  'aura-voltron': {
+    Rampe: [
+      (ci) => `o:"add {" type:enchantment ${ci} format:commander`,
+    ],
+    Pioche: [
+      (ci) => `o:"whenever you cast an aura" o:"draw" ${ci} format:commander`,
+      (ci) => `o:"aura" o:"draw" ${ci} format:commander`,
+      (ci) => `otag:enchantress ${ci} format:commander`,
+    ],
+  },
+  'lifegain': {
+    Pioche: [
+      (ci) => `o:"whenever you gain life" o:"draw" ${ci} format:commander`,
+    ],
+  },
+  '+1/+1-counters': {
+    Pioche: [
+      (ci) => `o:"+1/+1 counter" o:"draw" ${ci} format:commander`,
+    ],
+    Suppression: [
+      (ci) => `o:"remove" o:"counter" o:"destroy" ${ci} format:commander`,
+    ],
+  },
+  'combo-tutor': {
+    Pioche: [
+      (ci) => `o:"search your library" o:"card" (type:instant OR type:sorcery) ${ci} format:commander`,
+      (ci) => `o:"draw" o:"card" type:instant ${ci} format:commander`,
+    ],
+    Suppression: [
+      (ci) => `(o:"destroy target" OR o:"exile target") type:instant ${ci} format:commander`,
+    ],
+  },
+  'aggro-cheap': {
+    Pioche: [
+      (ci) => `o:"whenever" o:"attacks" o:"draw" ${ci} format:commander`,
+      (ci) => `o:"whenever" o:"deals combat damage" o:"draw" ${ci} format:commander`,
+    ],
+  },
+  'stax': {
+    Suppression: [
+      (ci) => `o:"cost" o:"more to cast" type:enchantment ${ci} format:commander`,
+      (ci) => `(o:"destroy target" OR o:"exile target") type:instant ${ci} format:commander`,
+    ],
+  },
+};

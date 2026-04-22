@@ -1,5 +1,6 @@
 import { ScryfallCard } from './scryfall';
 import { SlotCounts } from './types';
+import { Archetype, ARCHETYPE_SLOT_QUERIES } from './formula';
 
 export const MAX_BASIC_LANDS = 27;
 export const MIN_BASIC_LANDS = 8; // Réservés pour les sorts de ramp (Cultivate, Farseek, Solemn Simulacrum...)
@@ -105,12 +106,12 @@ export function buildSynergyQueries(
   const queries: ((ci: string) => string)[] = [];
 
   // Créatures synergiques en priorité (otag + type:creature)
-  for (const tag of oracleTags.slice(0, 4)) {
+  for (const tag of oracleTags.slice(0, 6)) {
     queries.push((ci) => `otag:${tag} type:creature ${ci} format:commander`);
   }
 
   // Non-créatures synergiques (Grave Pact, Ashnod's Altar...)
-  for (const tag of oracleTags.slice(0, 2)) {
+  for (const tag of oracleTags.slice(0, 4)) {
     queries.push((ci) => `otag:${tag} ${ci} format:commander`);
   }
 
@@ -125,4 +126,11 @@ export function buildSynergyQueries(
   }
 
   return queries;
+}
+
+export function buildArchetypeSlotQueries(
+  archetype: Archetype,
+  role: 'Rampe' | 'Pioche' | 'Suppression' | 'Balayage'
+): ((ci: string) => string)[] {
+  return ARCHETYPE_SLOT_QUERIES[archetype]?.[role] ?? [];
 }
