@@ -55,11 +55,11 @@ function CardSmall({ card, eurPrice, count, isSynergy }: { card: CardData; eurPr
   return (
     <div className="relative">
       <div
-        className="flex items-center justify-between py-1 px-2 rounded hover:bg-gray-800 group cursor-pointer"
+        className="flex items-center justify-between gap-2 py-1 px-2 rounded hover:bg-gray-800 group cursor-pointer"
         onMouseEnter={() => !isBasic && setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
-        <span className="text-sm text-gray-200 group-hover:text-white truncate max-w-[180px]">
+        <span className="text-sm text-gray-200 group-hover:text-white truncate flex-1 min-w-0">
           {count > 1 && (
             <span className="text-amber-500 font-semibold mr-1.5">{count}×</span>
           )}
@@ -69,13 +69,13 @@ function CardSmall({ card, eurPrice, count, isSynergy }: { card: CardData; eurPr
           {card.name}
         </span>
         {isBasic ? (
-          <span className="text-xs text-gray-500 ml-2 shrink-0">{eurPrice.toFixed(2)}€</span>
+          <span className="text-xs text-gray-500 shrink-0">{eurPrice.toFixed(2)}€</span>
         ) : (
           <a
             href={cardmarketUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs text-amber-400 hover:text-amber-300 ml-2 shrink-0"
+            className="text-xs text-amber-400 hover:text-amber-300 shrink-0"
             onClick={e => e.stopPropagation()}
           >
             {eurPrice > 0 ? `${eurPrice.toFixed(2)}€` : 'gratuit'}
@@ -83,7 +83,7 @@ function CardSmall({ card, eurPrice, count, isSynergy }: { card: CardData; eurPr
         )}
       </div>
       {hovered && img && (
-        <div className="absolute z-50 left-full top-0 ml-2 pointer-events-none">
+        <div className="absolute z-50 left-full top-0 ml-2 pointer-events-none hidden md:block">
           <img src={img} alt={card.name} className="rounded-lg shadow-xl w-32" />
         </div>
       )}
@@ -234,9 +234,9 @@ export default function Home() {
   const cmdImg = deck?.commander?.image_uris?.small || deck?.commander?.card_faces?.[0]?.image_uris?.small;
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex">
+    <div className="min-h-screen bg-gray-950 text-white flex flex-col md:flex-row">
       {/* Sidebar gauche : recherche + loader */}
-      <aside className="w-80 shrink-0 border-r border-gray-800 flex flex-col h-screen sticky top-0">
+      <aside className="w-full md:w-80 md:shrink-0 border-b md:border-b-0 md:border-r border-gray-800 flex flex-col md:h-screen md:sticky md:top-0">
         {/* Header */}
         <div className="border-b border-gray-800 px-4 py-4">
           <h1 className="text-lg font-bold text-amber-400">⚔️ Commander Optimizer</h1>
@@ -383,7 +383,7 @@ export default function Home() {
       </aside>
 
       {/* Zone centrale : animation + deck */}
-      <main className="flex-1 min-h-screen relative overflow-hidden">
+      <main className="flex-1 min-h-[60vh] md:min-h-screen relative overflow-hidden">
         {/* Animation des cartes qui forment un deck */}
         {showCards && cardImages.length > 0 && !deck && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-10 pointer-events-none">
@@ -457,7 +457,7 @@ export default function Home() {
 
         {/* État vide */}
         {!loading && !deck && cardImages.length === 0 && (
-          <div className="h-full flex items-center justify-center text-gray-600">
+          <div className="min-h-64 md:h-full flex items-center justify-center text-gray-600">
             <div className="text-center">
               <div className="text-6xl mb-4">🃏</div>
               <p>Choisis un Commander et un budget</p>
@@ -468,12 +468,12 @@ export default function Home() {
 
         {/* Résultats */}
         {deck && (
-          <div className="p-6 overflow-y-auto h-screen">
+          <div className="p-4 md:p-6 overflow-y-auto md:h-screen">
             {/* Summary */}
             <div className="flex gap-4 mb-6 items-start">
-              {cmdImg && <img src={cmdImg} alt={deck.commander.name} className="rounded-lg w-24 shadow-lg" />}
+              {cmdImg && <img src={cmdImg} alt={deck.commander.name} className="rounded-lg w-16 md:w-24 shadow-lg" />}
               <div>
-                <h2 className="text-xl font-bold text-amber-400">{deck.commander.name}</h2>
+                <h2 className="text-lg md:text-xl font-bold text-amber-400">{deck.commander.name}</h2>
                 <p className="text-sm text-gray-400">{deck.commander.type_line}</p>
                 <div className="flex gap-4 mt-2 flex-wrap">
                   <span className="text-sm"><span className="text-gray-400">Total :</span> <span className="font-semibold text-green-400">{deck.totalPrice.toFixed(2)}€</span></span>
