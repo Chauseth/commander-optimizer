@@ -93,7 +93,7 @@ export const DECK_SLOTS: Array<{
 ];
 
 // Sous-types trop larges pour être utiles comme indicateur tribal
-const GENERIC_SUBTYPES = new Set([
+export const GENERIC_SUBTYPES = new Set([
   'human', 'wizard', 'shaman', 'warrior', 'cleric',
   'rogue', 'knight', 'soldier', 'druid', 'monk',
 ]);

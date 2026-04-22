@@ -1,7 +1,8 @@
 import { ScryfallCard, searchCards, colorIdentityQuery, getEurPrice, getTaggerOracleTags } from './scryfall';
 import { DeckCard, GeneratedDeck, SlotCounts, ProgressEvent, getCardTypeRole } from './types';
 import { detectRoles, scoreCard } from './scoring';
-import { DECK_SLOTS, BASIC_LANDS, BUDGET_WEIGHTS, MIN_BASIC_LANDS, buildSynergyQueries } from './slots';
+import { DECK_SLOTS, BASIC_LANDS, BUDGET_WEIGHTS, buildSynergyQueries } from './slots';
+import { computeSlotCounts, getMinBasicLands, adjustLandsForActualCurve } from './formula';
 
 export type { DeckCard, GeneratedDeck, SlotCounts, ProgressEvent };
 export { DEFAULT_SLOT_COUNTS } from './slots';
@@ -27,17 +28,33 @@ export async function generateDeck(
   commander: ScryfallCard,
   budgetEur: number,
   onProgress?: (event: ProgressEvent) => void,
-  slotCounts: SlotCounts = { Rampe: 10, Pioche: 10, Suppression: 8, Balayage: 3, Synergie: 31, totalLands: 37 }
+  slotCountsOverride?: Partial<SlotCounts>
 ): Promise<GeneratedDeck> {
   const globalStart = Date.now();
   log.info(`Génération démarrée`, {
     commander: commander.name,
     colors: commander.color_identity,
     budget: `${budgetEur}€`,
-    slots: slotCounts,
+    overrides: slotCountsOverride ?? null,
   });
 
   const ci = colorIdentityQuery(commander.color_identity);
+
+  const usedNames = new Set<string>([commander.name]);
+
+  onProgress?.({ step: 'tagger' });
+  const t0 = Date.now();
+  const oracleTags = await getTaggerOracleTags(commander);
+  log.info(`Tagger : ${oracleTags.length} tags (${Date.now() - t0}ms)`, { tags: oracleTags });
+
+  const { counts: dynamicCounts, archetype, estimatedAvgCmc } = computeSlotCounts(commander, oracleTags);
+  const slotCounts: SlotCounts = { ...dynamicCounts, ...slotCountsOverride };
+  log.info(`Archétype détecté : ${archetype}`, {
+    estimatedAvgCmc: estimatedAvgCmc.toFixed(2),
+    distribution: slotCounts,
+  });
+
+  const minBasicLands = getMinBasicLands(commander.color_identity?.length ?? 0);
 
   const { totalLands, ...deckSlotCounts } = slotCounts;
   const basicLandReserve = totalLands * 0.10;
@@ -51,12 +68,6 @@ export async function generateDeck(
 
   log.info(`Budget : ${remainingBudget.toFixed(2)}€ | hardCap : ${hardCap.toFixed(2)}€ | scryfallCap : ${scryfallPriceCap.toFixed(2)}€ | avgTarget : ${avgTargetPrice.toFixed(2)}€`);
 
-  const usedNames = new Set<string>([commander.name]);
-
-  onProgress?.({ step: 'tagger' });
-  const t0 = Date.now();
-  const oracleTags = await getTaggerOracleTags(commander);
-  log.info(`Tagger : ${oracleTags.length} tags (${Date.now() - t0}ms)`, { tags: oracleTags });
   const synergyFallbackQueries = buildSynergyQueries(commander, oracleTags);
 
   const allDeckCards: DeckCard[] = [];
@@ -115,7 +126,7 @@ export async function generateDeck(
     onProgress?.({ step: slot.role });
     const slotStart = Date.now();
     const target = slot.role === 'Terrains non basiques'
-      ? totalLands - MIN_BASIC_LANDS
+      ? totalLands - minBasicLands
       : (deckSlotCounts[slot.role as keyof typeof deckSlotCounts] ?? slot.count);
     let needed = target;
 
@@ -226,9 +237,24 @@ export async function generateDeck(
     log.info(`Upgrade terminé`, { upgrades: upgradeCount, budget_restant: `${remainingBudget.toFixed(2)}€`, durée: `${Date.now() - upgradeStart}ms` });
   }
 
+  // ── Ajustement mana base selon la courbe réelle ────────────────────────
+  const nonLandCards = allDeckCards.filter(dc => !dc.card.type_line?.toLowerCase().includes('land'));
+  const actualAvgCmc = nonLandCards.length > 0
+    ? nonLandCards.reduce((sum, dc) => sum + (dc.card.cmc ?? 0), 0) / nonLandCards.length
+    : estimatedAvgCmc;
+  const adjustedCounts = adjustLandsForActualCurve(slotCounts, estimatedAvgCmc, actualAvgCmc);
+  const adjustedTotalLands = adjustedCounts.totalLands;
+  if (adjustedTotalLands !== totalLands) {
+    log.info(`Ajustement lands post-construction`, {
+      estimatedAvgCmc: estimatedAvgCmc.toFixed(2),
+      actualAvgCmc: actualAvgCmc.toFixed(2),
+      totalLands: `${totalLands} → ${adjustedTotalLands}`,
+    });
+  }
+
   // ── Terrains basiques ──────────────────────────────────────────────────
   const nonBasicLandsFound = allDeckCards.filter(dc => dc.role === 'Terrains non basiques').length;
-  const landsNeeded = Math.max(0, totalLands - nonBasicLandsFound);
+  const landsNeeded = Math.max(0, adjustedTotalLands - nonBasicLandsFound);
   const colors = commander.color_identity.filter(c => BASIC_LANDS[c]);
   const landColors = colors.length > 0 ? colors : ['W'];
 

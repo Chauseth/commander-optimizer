@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { getCommander } from '../../../lib/scryfall';
-import { generateDeck, DEFAULT_SLOT_COUNTS, SlotCounts, ProgressEvent } from '../../../lib/deckBuilder';
+import { generateDeck, SlotCounts, ProgressEvent } from '../../../lib/deckBuilder';
 
 export async function POST(req: NextRequest) {
   const { commanderName, budget, slotCounts } = await req.json();
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
           return;
         }
 
-        const counts: SlotCounts = { ...DEFAULT_SLOT_COUNTS, ...slotCounts };
+        const counts = slotCounts as Partial<SlotCounts> | undefined;
 
         send(controller, { type: 'progress', step: 'commander' });
         const t0 = Date.now();
