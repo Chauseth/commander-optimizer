@@ -1,7 +1,7 @@
 import { ScryfallCard, searchCards, colorIdentityQuery, getEurPrice, getTaggerOracleTags } from './scryfall';
 import { DeckCard, GeneratedDeck, SlotCounts, ProgressEvent, getCardTypeRole } from './types';
 import { detectRoles, scoreCard } from './scoring';
-import { DECK_SLOTS, BASIC_LANDS, BUDGET_WEIGHTS, buildSynergyQueries } from './slots';
+import { DECK_SLOTS, BASIC_LANDS, BUDGET_WEIGHTS, buildSynergyQueries, buildArchetypeSlotQueries } from './slots';
 import { computeSlotCounts, getMinBasicLands, adjustLandsForActualCurve } from './formula';
 
 export type { DeckCard, GeneratedDeck, SlotCounts, ProgressEvent };
@@ -121,6 +121,7 @@ export async function generateDeck(
   };
 
   // ── Remplir chaque slot ────────────────────────────────────────────────
+  const FUNCTIONAL_SLOTS = new Set(['Rampe', 'Pioche', 'Suppression', 'Balayage']);
   for (const slot of DECK_SLOTS) {
     await waitForAnimations();
     onProgress?.({ step: slot.role });
@@ -133,7 +134,9 @@ export async function generateDeck(
     const slotWeight = BUDGET_WEIGHTS[slot.role] ?? 1.0;
     const queriesToRun = slot.role === 'Synergie'
       ? [...synergyFallbackQueries, ...slot.queries]
-      : slot.queries;
+      : FUNCTIONAL_SLOTS.has(slot.role)
+        ? [...buildArchetypeSlotQueries(archetype, slot.role as 'Rampe' | 'Pioche' | 'Suppression' | 'Balayage'), ...slot.queries]
+        : slot.queries;
 
     for (const buildQuery of queriesToRun) {
       if (needed <= 0) break;
