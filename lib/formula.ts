@@ -14,6 +14,7 @@ export type Archetype =
   | 'aggro-cheap'
   | 'lifegain'
   | '+1/+1-counters'
+  | 'aura-voltron'
   | 'default';
 
 interface ArchetypeModifier {
@@ -36,6 +37,7 @@ export const ARCHETYPE_MODIFIERS: Record<Archetype, ArchetypeModifier> = {
   'aggro-cheap':     { rampe:  0, pioche:  0, suppression: -1, balayage: -2, baseCurve: 2.3 },
   'lifegain':        { rampe:  0, pioche:  0, suppression:  0, balayage:  0, baseCurve: 2.9 },
   '+1/+1-counters':  { rampe:  0, pioche:  0, suppression:  0, balayage:  0, baseCurve: 2.9 },
+  'aura-voltron':    { rampe: -3, pioche:  0, suppression: -2, balayage: -3, baseCurve: 2.2 },
   'default':         { rampe:  0, pioche:  0, suppression:  0, balayage:  0, baseCurve: 2.9 },
 };
 
@@ -71,6 +73,15 @@ export function detectArchetype(commander: ScryfallCard, oracleTags: string[]): 
   if (tags.has('token-generation') || /\bcreate\b.*\btoken\b/i.test(text)) {
     return 'tokens';
   }
+
+  // Aura-voltron : commander qui tutore des auras ou grossit grâce aux auras
+  const hasAuraTag = tags.has('aura') || tags.has('voltron');
+  const hasAuraText = /\baura\b/i.test(text) && (
+    /\bsearch your library\b/i.test(text) ||
+    /\bfor each aura\b/i.test(text) ||
+    /\bwhenever you cast an? aura\b/i.test(text)
+  );
+  if (hasAuraTag || hasAuraText) return 'aura-voltron';
 
   const subtypePart = commander.type_line?.split('—')[1];
   if (subtypePart) {
