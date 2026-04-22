@@ -105,11 +105,11 @@ const STEPS = [
 ];
 
 const SLOT_CONFIG = [
-  { key: 'Rampe',       label: 'Rampe',       icon: '⚡', min: 0,  max: 20 },
-  { key: 'Pioche',      label: 'Pioche',      icon: '📖', min: 0,  max: 20 },
-  { key: 'Suppression', label: 'Suppression', icon: '⚔️', min: 0,  max: 15 },
-  { key: 'Balayage',    label: 'Balayage',    icon: '🌊', min: 0,  max: 10 },
-  { key: 'Synergie',    label: 'Synergies',   icon: '✦',  min: 5,  max: 50 },
+  { key: 'Rampe',       label: 'Rampe',       desc: 'Mana rocks & accélération',  icon: '⚡', min: 0,  max: 20 },
+  { key: 'Pioche',      label: 'Pioche',      desc: 'Effets de pioche de cartes',  icon: '📖', min: 0,  max: 20 },
+  { key: 'Suppression', label: 'Suppression', desc: 'Removal ciblé',               icon: '⚔️', min: 0,  max: 15 },
+  { key: 'Balayage',    label: 'Balayage',    desc: 'Destructions de masse',        icon: '🌊', min: 0,  max: 10 },
+  { key: 'Synergie',    label: 'Synergies',   desc: 'Cartes synergiques Commander', icon: '✦',  min: 5,  max: 50 },
 ] as const;
 
 const DEFAULT_COUNTS = { Rampe: 10, Pioche: 10, Suppression: 8, Balayage: 3, Synergie: 31, totalLands: 37 };
@@ -285,32 +285,38 @@ export default function Home() {
                     {total}/99
                   </span>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {SLOT_CONFIG.map(slot => (
-                    <div key={slot.key} className="flex items-center gap-2">
-                      <span className="text-sm w-4 text-center shrink-0">{slot.icon}</span>
+                    <div key={slot.key}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-gray-300 font-medium">{slot.icon} {slot.label}</span>
+                        <span className="text-xs font-semibold text-amber-400 tabular-nums">{counts[slot.key]}</span>
+                      </div>
+                      <p className="text-xs text-gray-600 mb-0.5">{slot.desc}</p>
                       <input
                         type="range"
                         min={slot.min}
                         max={slot.max}
                         value={counts[slot.key]}
                         onChange={e => setCounts(prev => ({ ...prev, [slot.key]: Number(e.target.value) }))}
-                        className="flex-1 h-1 accent-amber-500 cursor-pointer"
+                        className="w-full h-1 accent-amber-500 cursor-pointer"
                       />
-                      <span className="text-xs text-gray-400 w-5 text-right tabular-nums">{counts[slot.key]}</span>
                     </div>
                   ))}
-                  <div className="flex items-center gap-2 pt-2 border-t border-gray-800">
-                    <span className="text-sm w-4 text-center shrink-0">🏔️</span>
+                  <div className="pt-2 border-t border-gray-800">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-300 font-medium">🏔️ Terrains</span>
+                      <span className="text-xs font-semibold text-amber-400 tabular-nums">{counts.totalLands}</span>
+                    </div>
+                    <p className="text-xs text-gray-600 mb-0.5">Terrains basiques + non basiques</p>
                     <input
                       type="range"
                       min={28}
                       max={45}
                       value={counts.totalLands}
                       onChange={e => setCounts(prev => ({ ...prev, totalLands: Number(e.target.value) }))}
-                      className="flex-1 h-1 accent-amber-500 cursor-pointer"
+                      className="w-full h-1 accent-amber-500 cursor-pointer"
                     />
-                    <span className="text-xs text-gray-400 w-5 text-right tabular-nums">{counts.totalLands}</span>
                   </div>
                 </div>
                 <button
