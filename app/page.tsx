@@ -129,6 +129,7 @@ export default function Home() {
   const [error, setError] = useState('');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [counts, setCounts] = useState<Record<string, number>>({ ...DEFAULT_COUNTS });
+  const [hasModifiedCounts, setHasModifiedCounts] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const nonLandTotal = SLOT_CONFIG.reduce((s, sl) => s + (counts[sl.key] ?? 0), 0);
@@ -162,7 +163,7 @@ export default function Home() {
       const res = await fetch('/api/generate-deck', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ commanderName: commander, budget, slotCounts: counts }),
+        body: JSON.stringify({ commanderName: commander, budget, slotCounts: hasModifiedCounts ? counts : undefined }),
       });
       if (!res.body) throw new Error('Pas de réponse du serveur');
       const reader = res.body.getReader();
@@ -298,7 +299,7 @@ export default function Home() {
                         min={slot.min}
                         max={slot.max}
                         value={counts[slot.key]}
-                        onChange={e => setCounts(prev => ({ ...prev, [slot.key]: Number(e.target.value) }))}
+                        onChange={e => { setCounts(prev => ({ ...prev, [slot.key]: Number(e.target.value) })); setHasModifiedCounts(true); }}
                         className="w-full h-1 accent-amber-500 cursor-pointer"
                       />
                     </div>
@@ -314,14 +315,14 @@ export default function Home() {
                       min={28}
                       max={45}
                       value={counts.totalLands}
-                      onChange={e => setCounts(prev => ({ ...prev, totalLands: Number(e.target.value) }))}
+                      onChange={e => { setCounts(prev => ({ ...prev, totalLands: Number(e.target.value) })); setHasModifiedCounts(true); }}
                       className="w-full h-1 accent-amber-500 cursor-pointer"
                     />
                   </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setCounts({ ...DEFAULT_COUNTS })}
+                  onClick={() => { setCounts({ ...DEFAULT_COUNTS }); setHasModifiedCounts(false); }}
                   className="mt-2 text-xs text-gray-500 hover:text-gray-300 underline"
                 >
                   Reset
