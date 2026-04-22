@@ -50,12 +50,14 @@ export async function getCommander(name: string): Promise<ScryfallCard> {
   throw new Error(`Commander "${name}" introuvable`);
 }
 
-// Autocomplete pour la recherche de Commander
+// Autocomplete filtré sur les cartes éligibles Commander (is:commander)
 export async function autocomplete(query: string): Promise<string[]> {
-  const res = await fetchWithRetry(`${BASE}/cards/autocomplete?q=${encodeURIComponent(query)}`);
+  const res = await fetchWithRetry(
+    `${BASE}/cards/search?q=${encodeURIComponent(query + ' is:commander')}&order=name&unique=names`
+  );
   if (!res.ok) return [];
   const data = await res.json();
-  return data.data || [];
+  return (data.data as ScryfallCard[] || []).map((c: ScryfallCard) => c.name);
 }
 
 // Cherche des cartes avec un filtre Scryfall
