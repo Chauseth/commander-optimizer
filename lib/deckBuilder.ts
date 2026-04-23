@@ -1,83 +1,65 @@
-import { ScryfallCard, searchCards, colorIdentityQuery, getEurPrice, getTaggerOracleTags } from './scryfall';
-import { DeckCard, GeneratedDeck, SlotCounts, ProgressEvent, getCardTypeRole } from './types';
-import { detectRoles, scoreCard } from './scoring';
-import { DECK_SLOTS, BASIC_LANDS, BUDGET_WEIGHTS, buildSynergyQueries, buildArchetypeSlotQueries } from './slots';
-import { computeSlotCounts, getMinBasicLands, adjustLandsForActualCurve } from './formula';
+import { ScryfallCard, colorIdentityQuery, getTaggerOracleTags } from './scryfall';
+import { DeckCard, GeneratedDeck, Slot, SlotCounts, ProgressEvent, getCardTypeRole } from './types';
+import { scoreCard } from './scoring';
+import {
+  SLOT_QUERIES, NONBASIC_LAND_DESCRIPTORS, BUDGET_WEIGHTS, SLOT_LABEL_FR,
+  NONBASIC_LAND_LABEL, BASIC_LAND_LABEL, BASIC_LANDS,
+  buildSynergyDescriptors, QueryDescriptor,
+} from './slots';
+import { runPool, dispatchPool, PoolEntry, AssignedCard } from './pool';
+import { computeSlotCounts, getMinBasicLands, adjustLandsForActualCurve, FUNCTIONAL_SLOTS } from './formula';
 
 export type { DeckCard, GeneratedDeck, SlotCounts, ProgressEvent };
 export { DEFAULT_SLOT_COUNTS } from './slots';
 
 // ─── Logger ────────────────────────────────────────────────────────────────
-function ts() {
-  return new Date().toISOString().slice(11, 23);
-}
-
+function ts() { return new Date().toISOString().slice(11, 23); }
 const log = {
   info:  (msg: string, meta?: object) => console.log( `[${ts()}] INFO  ${msg}`, meta ? JSON.stringify(meta) : ''),
   warn:  (msg: string, meta?: object) => console.warn(`[${ts()}] WARN  ${msg}`, meta ? JSON.stringify(meta) : ''),
   error: (msg: string, meta?: object) => console.error(`[${ts()}] ERROR ${msg}`, meta ? JSON.stringify(meta) : ''),
-  slot:  (role: string, found: number, target: number, ms: number) => {
-    const ok = found >= target;
-    const fn = ok ? console.log : console.warn;
-    fn(`[${ts()}] SLOT  ${role.padEnd(16)} ${found}/${target} cartes  (${ms}ms)${ok ? '' : ' ⚠ incomplet'}`);
-  },
 };
 
-// ─── generateDeck ──────────────────────────────────────────────────────────
 export async function generateDeck(
   commander: ScryfallCard,
   budgetEur: number,
   onProgress?: (event: ProgressEvent) => void,
-  slotCountsOverride?: Partial<SlotCounts>
+  slotCountsOverride?: Partial<SlotCounts>,
 ): Promise<GeneratedDeck> {
   const globalStart = Date.now();
-  log.info(`Génération démarrée`, {
-    commander: commander.name,
-    colors: commander.color_identity,
-    budget: `${budgetEur}€`,
-    overrides: slotCountsOverride ?? null,
-  });
+  log.info(`Génération démarrée`, { commander: commander.name, colors: commander.color_identity, budget: `${budgetEur}€`, overrides: slotCountsOverride ?? null });
 
   const ci = colorIdentityQuery(commander.color_identity);
-
   const usedNames = new Set<string>([commander.name]);
 
+  // ── Phase 0 : Tagger + computeSlotCounts ──────────────────────────────
   onProgress?.({ step: 'tagger' });
-  const t0 = Date.now();
+  const tTagger = Date.now();
   const oracleTags = await getTaggerOracleTags(commander);
-  log.info(`Tagger : ${oracleTags.length} tags (${Date.now() - t0}ms)`, { tags: oracleTags });
+  log.info(`Tagger : ${oracleTags.length} tags (${Date.now() - tTagger}ms)`, { tags: oracleTags });
 
   const { counts: dynamicCounts, archetype, estimatedAvgCmc } = computeSlotCounts(commander, oracleTags);
   const slotCounts: SlotCounts = { ...dynamicCounts, ...slotCountsOverride };
-  log.info(`Archétype détecté : ${archetype}`, {
-    estimatedAvgCmc: estimatedAvgCmc.toFixed(2),
-    distribution: slotCounts,
-  });
+  log.info(`Archétype : ${archetype}`, { estimatedAvgCmc: estimatedAvgCmc.toFixed(2), distribution: slotCounts });
 
   const minBasicLands = getMinBasicLands(commander.color_identity?.length ?? 0);
+  const totalLands = slotCounts.totalLands;
+  const nonBasicLandTarget = Math.max(0, totalLands - minBasicLands);
 
-  const { totalLands, ...deckSlotCounts } = slotCounts;
-  const basicLandReserve = totalLands * 0.10;
-  const totalNonBasicTarget = Object.values(deckSlotCounts).reduce((s, v) => s + v, 0) + totalLands;
-  let remainingBudget = budgetEur - basicLandReserve;
-  let remainingCards = totalNonBasicTarget;
-
-  const avgTargetPrice = remainingBudget / remainingCards;
+  // ── Budget ────────────────────────────────────────────────────────────
+  const totalNonLands = FUNCTIONAL_SLOTS.reduce((s, k) => s + slotCounts[k], 0);
+  const totalCardsTarget = totalNonLands + nonBasicLandTarget;
+  const basicReserve = totalLands * 0.10; // ~3.7€
+  const remainingBudget0 = Math.max(0, budgetEur - basicReserve);
+  const avgTargetPrice = totalCardsTarget > 0 ? remainingBudget0 / totalCardsTarget : 0;
   const hardCap = Math.max(Math.min(budgetEur * 0.15, avgTargetPrice * 5), 2);
   const scryfallPriceCap = Math.max(avgTargetPrice * 3, 10);
+  log.info(`Budget : ${remainingBudget0.toFixed(2)}€ | hardCap : ${hardCap.toFixed(2)}€ | scryfallCap : ${scryfallPriceCap.toFixed(2)}€ | avgTarget : ${avgTargetPrice.toFixed(2)}€`);
 
-  log.info(`Budget : ${remainingBudget.toFixed(2)}€ | hardCap : ${hardCap.toFixed(2)}€ | scryfallCap : ${scryfallPriceCap.toFixed(2)}€ | avgTarget : ${avgTargetPrice.toFixed(2)}€`);
-
-  const synergyFallbackQueries = buildSynergyQueries(commander, oracleTags);
-
-  const allDeckCards: DeckCard[] = [];
-  let totalPrice = 0;
-
-  // ── File d'animation pour l'UI ────────────────────────────────────────────
+  // ── File d'animation pour l'UI ─────────────────────────────────────────
   type QueueItem = string | { oldImg: string; newImg: string };
   const cardQueue: QueueItem[] = [];
   let isProcessingQueue = false;
-
   const processCardQueue = async () => {
     if (isProcessingQueue) return;
     isProcessingQueue = true;
@@ -101,18 +83,15 @@ export async function generateDeck(
     }
     isProcessingQueue = false;
   };
-
   const notifyCard = (card: ScryfallCard) => {
     const img = card.image_uris?.small || card.card_faces?.[0]?.image_uris?.small;
     if (img) { cardQueue.push(img); processCardQueue(); }
   };
-
   const notifyUpgrade = (oldCard: ScryfallCard, newCard: ScryfallCard) => {
     const oldImg = oldCard.image_uris?.small || oldCard.card_faces?.[0]?.image_uris?.small;
     const newImg = newCard.image_uris?.small || newCard.card_faces?.[0]?.image_uris?.small;
     if (newImg) { cardQueue.push(oldImg ? { oldImg, newImg } : newImg); processCardQueue(); }
   };
-
   const waitForAnimations = async () => {
     while (cardQueue.length > 0 || isProcessingQueue) {
       await new Promise(r => setTimeout(r, 50));
@@ -120,127 +99,169 @@ export async function generateDeck(
     await new Promise(r => setTimeout(r, 700));
   };
 
-  // ── Remplir chaque slot ────────────────────────────────────────────────
-  const FUNCTIONAL_SLOTS = new Set(['Rampe', 'Pioche', 'Suppression', 'Balayage']);
-  for (const slot of DECK_SLOTS) {
-    await waitForAnimations();
-    onProgress?.({ step: slot.role });
-    const slotStart = Date.now();
-    const target = slot.role === 'Terrains non basiques'
-      ? totalLands - minBasicLands
-      : (deckSlotCounts[slot.role as keyof typeof deckSlotCounts] ?? slot.count);
-    let needed = target;
+  // ── Phase A : construire les descriptors ──────────────────────────────
+  const descriptors: QueryDescriptor[] = [];
+  for (const slot of FUNCTIONAL_SLOTS) {
+    if (slotCounts[slot] <= 0 && slot !== 'synergy') continue;
+    descriptors.push(...SLOT_QUERIES[slot]);
+  }
+  // Synergie : descriptors dynamiques basés sur les tags du commander
+  descriptors.push(...buildSynergyDescriptors(commander, oracleTags));
+  if (nonBasicLandTarget > 0) descriptors.push(...NONBASIC_LAND_DESCRIPTORS);
 
-    const slotWeight = BUDGET_WEIGHTS[slot.role] ?? 1.0;
-    const queriesToRun = slot.role === 'Synergie'
-      ? [...synergyFallbackQueries, ...slot.queries]
-      : FUNCTIONAL_SLOTS.has(slot.role)
-        ? [...buildArchetypeSlotQueries(archetype, slot.role as 'Rampe' | 'Pioche' | 'Suppression' | 'Balayage'), ...slot.queries]
-        : slot.queries;
+  // Map id → weight pour le scoring
+  const descriptorWeights = new Map<string, number>();
+  for (const d of descriptors) descriptorWeights.set(d.id, d.weight);
 
-    for (const buildQuery of queriesToRun) {
-      if (needed <= 0) break;
-      const q = `${buildQuery(ci)} eur<=${scryfallPriceCap.toFixed(2)}`;
-      let candidates: ScryfallCard[] = [];
-      try {
-        const t2 = Date.now();
-        candidates = await searchCards(q);
-        log.info(`  [${slot.role}] ${candidates.length} résultats (${Date.now() - t2}ms)`, { q });
-      } catch (err) {
-        log.error(`  [${slot.role}] Requête échouée`, { q, err: String(err) });
-      }
+  // ── Phase B : pool commun en parallèle batché ─────────────────────────
+  onProgress?.({ step: 'pool' });
+  const tPool = Date.now();
+  const pool = await runPool(descriptors, ci, scryfallPriceCap, (msg) => log.info(`  ${msg}`));
+  log.info(`Pool construit : ${pool.length} cartes uniques (${Date.now() - tPool}ms)`);
 
-      const filtered = candidates
-        .filter(c => c.legalities?.commander === 'legal' && !usedNames.has(c.name) && getEurPrice(c) > 0)
-        .sort((a, b) => {
-          const rolesA = detectRoles(a);
-          const rolesB = detectRoles(b);
-          return scoreCard(b, oracleTags, slot.role, rolesB)
-               - scoreCard(a, oracleTags, slot.role, rolesA);
-        });
-
-      for (const card of filtered) {
-        if (needed <= 0) break;
-        const price = getEurPrice(card);
-        const dynamicMax = remainingCards > 0 ? (remainingBudget / remainingCards) * slotWeight * 1.5 : hardCap;
-        const maxForCard = Math.min(hardCap, Math.max(dynamicMax, avgTargetPrice * slotWeight));
-        if (price > maxForCard) continue;
-        usedNames.add(card.name);
-        totalPrice += price;
-        remainingBudget -= price;
-        remainingCards--;
-        const isSynergySlot = slot.role === 'Synergie';
-        const role = isSynergySlot ? getCardTypeRole(card.type_line ?? '') : slot.role;
-        allDeckCards.push({ card, role, eurPrice: price, count: 1, ...(isSynergySlot && { isSynergy: true }) });
-        notifyCard(card);
-        needed--;
-      }
+  // Nonbasic-land descriptors n'ont pas de slot — on assigne manuellement
+  // (ils sont consommés par Phase F, pas par dispatchPool sur slots fonctionnels)
+  const landPool: PoolEntry[] = [];
+  for (const entry of pool) {
+    if (entry.card.type_line?.toLowerCase().includes('land')
+        && !entry.card.type_line?.toLowerCase().includes('basic')) {
+      landPool.push(entry);
     }
-
-    log.slot(slot.role, target - needed, target, Date.now() - slotStart);
   }
 
-  // ── Passe d'upgrade ────────────────────────────────────────────────────
-  const upgradeThreshold = budgetEur * 0.10;
-  if (remainingBudget > upgradeThreshold) {
+  // ── Phase C : scoring vectoriel ───────────────────────────────────────
+  onProgress?.({ step: 'scoring' });
+  for (const entry of pool) {
+    const { total, breakdown } = scoreCard(entry, {
+      archetype, commander,
+      slotAvgBudget: avgTargetPrice,
+      descriptorWeights,
+    });
+    entry.score = total;
+    entry.scoreBreakdown = breakdown;
+  }
+
+  // ── Phase D : dispatch glouton ────────────────────────────────────────
+  onProgress?.({ step: 'dispatch' });
+  const allDeckCards: DeckCard[] = [];
+  let totalPrice = 0;
+
+  const targets: Record<Slot, number> = {} as Record<Slot, number>;
+  for (const slot of FUNCTIONAL_SLOTS) targets[slot] = slotCounts[slot];
+
+  const assigned = dispatchPool(pool, {
+    targets, budget: remainingBudget0, hardCap, avgTargetPrice,
+    budgetWeights: BUDGET_WEIGHTS as unknown as Record<Slot, number>,
+    usedNames,
+    onAssign: (entry, slot) => {
+      const isSynergy = slot === 'synergy';
+      const role = isSynergy ? getCardTypeRole(entry.card.type_line ?? '') : SLOT_LABEL_FR[slot];
+      allDeckCards.push({ card: entry.card, role, eurPrice: entry.price, count: 1, ...(isSynergy && { isSynergy: true }) });
+      totalPrice += entry.price;
+      notifyCard(entry.card);
+    },
+  });
+
+  // Log par slot
+  const filledBySlot = new Map<Slot, number>();
+  for (const a of assigned) filledBySlot.set(a.slot, (filledBySlot.get(a.slot) ?? 0) + 1);
+  for (const slot of FUNCTIONAL_SLOTS) {
+    const filled = filledBySlot.get(slot) ?? 0;
+    const target = targets[slot];
+    if (target > 0) log.info(`  SLOT ${SLOT_LABEL_FR[slot].padEnd(14)} ${filled}/${target}${filled < target ? ' ⚠' : ''}`);
+  }
+
+  let remainingBudget = remainingBudget0 - totalPrice;
+
+  // ── Phase E : Upgrade pass (pioche dans le pool restant) ──────────────
+  if (remainingBudget > budgetEur * 0.10) {
     await waitForAnimations();
     onProgress?.({ step: 'Upgrade' });
-    const upgradeStart = Date.now();
+    const tUpg = Date.now();
     log.info(`Upgrade démarré`, { budget_restant: `${remainingBudget.toFixed(2)}€` });
 
-    const upgradeCandidates = allDeckCards
-      .filter(dc => dc.role !== 'Terrains basiques' && dc.role !== 'Terrains non basiques')
-      .sort((a, b) => a.eurPrice - b.eurPrice);
+    const assignedByName = new Map<string, AssignedCard>();
+    for (const a of assigned) assignedByName.set(a.entry.card.name, a);
 
+    // Index pool par slot, pré-trié par score (déjà fait dans dispatchPool, mais re-créé ici)
+    const poolBySlot = new Map<Slot, PoolEntry[]>();
+    for (const slot of FUNCTIONAL_SLOTS) poolBySlot.set(slot, []);
+    for (const e of pool) {
+      for (const s of e.slotHits) poolBySlot.get(s)?.push(e);
+    }
+    for (const arr of poolBySlot.values()) arr.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+
+    const upgradeCandidates = [...assigned].sort((a, b) => a.price - b.price);
     let upgradeCount = 0;
     const maxUpgrades = Math.min(10, Math.floor(remainingBudget / 2));
 
-    for (const candidate of upgradeCandidates) {
+    for (const cand of upgradeCandidates) {
       if (upgradeCount >= maxUpgrades || remainingBudget < 1) break;
+      const upgradeBudget = cand.price + remainingBudget * 0.3;
+      if (upgradeBudget <= cand.price + 0.5) continue;
 
-      const upgradebudget = candidate.eurPrice + remainingBudget * 0.3;
-      if (upgradebudget <= candidate.eurPrice + 0.5) continue;
+      const candidatesPool = poolBySlot.get(cand.slot) ?? [];
+      const better = candidatesPool.find(e =>
+        e.card.name !== cand.entry.card.name &&
+        !usedNames.has(e.card.name) &&
+        e.price > cand.price &&
+        e.price <= upgradeBudget &&
+        (e.score ?? 0) > (cand.entry.score ?? 0)
+      );
+      if (!better) continue;
 
-      const synergyFallback = DECK_SLOTS.find(s => s.role === 'Synergie')!.queries[0];
-      const roleQuery = candidate.isSynergy
-        ? synergyFallback
-        : DECK_SLOTS.find(s => s.role === candidate.role)?.queries[0];
-      if (!roleQuery) continue;
+      const oldCard = cand.entry.card;
+      const priceDiff = better.price - cand.price;
+      usedNames.delete(oldCard.name);
+      usedNames.add(better.card.name);
 
-      const q = `${roleQuery(ci)} eur>${candidate.eurPrice.toFixed(2)} eur<=${upgradebudget.toFixed(2)}`;
-      try {
-        const upgrades = await searchCards(q);
-        const validUpgrades = upgrades
-          .filter(c =>
-            c.legalities?.commander === 'legal' &&
-            !usedNames.has(c.name) &&
-            getEurPrice(c) > candidate.eurPrice &&
-            (c.edhrec_rank ?? 99999) < (candidate.card.edhrec_rank ?? 99999)
-          )
-          .sort((a, b) => (a.edhrec_rank ?? 99999) - (b.edhrec_rank ?? 99999));
-
-        if (validUpgrades.length > 0) {
-          const upgrade = validUpgrades[0];
-          const newPrice = getEurPrice(upgrade);
-          const priceDiff = newPrice - candidate.eurPrice;
-          const oldCard = candidate.card;
-          usedNames.delete(candidate.card.name);
-          usedNames.add(upgrade.name);
-          candidate.card = upgrade;
-          candidate.eurPrice = newPrice;
-          totalPrice += priceDiff;
-          remainingBudget -= priceDiff;
-          upgradeCount++;
-          notifyUpgrade(oldCard, upgrade);
-          log.info(`  Upgrade: ${oldCard.name} → ${upgrade.name} (+${priceDiff.toFixed(2)}€)`);
-        }
-      } catch { /* ignore */ }
+      // Mettre à jour le DeckCard correspondant
+      const dc = allDeckCards.find(d => d.card.name === oldCard.name);
+      if (dc) {
+        dc.card = better.card;
+        dc.eurPrice = better.price;
+        if (cand.slot === 'synergy') dc.role = getCardTypeRole(better.card.type_line ?? '');
+      }
+      cand.entry = better;
+      cand.price = better.price;
+      totalPrice += priceDiff;
+      remainingBudget -= priceDiff;
+      upgradeCount++;
+      notifyUpgrade(oldCard, better.card);
+      log.info(`  Upgrade: ${oldCard.name} → ${better.card.name} (+${priceDiff.toFixed(2)}€)`);
     }
-
-    log.info(`Upgrade terminé`, { upgrades: upgradeCount, budget_restant: `${remainingBudget.toFixed(2)}€`, durée: `${Date.now() - upgradeStart}ms` });
+    log.info(`Upgrade terminé`, { upgrades: upgradeCount, budget_restant: `${remainingBudget.toFixed(2)}€`, durée: `${Date.now() - tUpg}ms` });
   }
 
-  // ── Ajustement mana base selon la courbe réelle ────────────────────────
+  // ── Phase F : terrains non basiques (utilité) + ajustement courbe ─────
+  onProgress?.({ step: NONBASIC_LAND_LABEL });
+  await waitForAnimations();
+
+  // Score les land entries (pour les classer) — le pool a déjà des scores mais
+  // les lands utilitaires n'ont aucun slot fonctionnel, donc score = 0. On utilise edhrec_rank seul.
+  landPool.sort((a, b) => (a.card.edhrec_rank ?? 99999) - (b.card.edhrec_rank ?? 99999));
+
+  let nonBasicLandsAdded = 0;
+  for (const entry of landPool) {
+    if (nonBasicLandsAdded >= nonBasicLandTarget) break;
+    if (usedNames.has(entry.card.name)) continue;
+    const slotWeight = BUDGET_WEIGHTS['nonbasic-land'];
+    const remainingCardsLocal = nonBasicLandTarget - nonBasicLandsAdded;
+    const dynamicMax = remainingCardsLocal > 0
+      ? Math.max(remainingBudget / Math.max(1, remainingCardsLocal), avgTargetPrice) * slotWeight
+      : hardCap;
+    const maxForCard = Math.min(hardCap, Math.max(dynamicMax, avgTargetPrice * slotWeight));
+    if (entry.price > maxForCard) continue;
+    usedNames.add(entry.card.name);
+    totalPrice += entry.price;
+    remainingBudget -= entry.price;
+    nonBasicLandsAdded++;
+    allDeckCards.push({ card: entry.card, role: NONBASIC_LAND_LABEL, eurPrice: entry.price, count: 1 });
+    notifyCard(entry.card);
+  }
+  log.info(`SLOT ${NONBASIC_LAND_LABEL.padEnd(14)} ${nonBasicLandsAdded}/${nonBasicLandTarget}`);
+
+  // Ajustement courbe réelle
   const nonLandCards = allDeckCards.filter(dc => !dc.card.type_line?.toLowerCase().includes('land'));
   const actualAvgCmc = nonLandCards.length > 0
     ? nonLandCards.reduce((sum, dc) => sum + (dc.card.cmc ?? 0), 0) / nonLandCards.length
@@ -248,23 +269,16 @@ export async function generateDeck(
   const adjustedCounts = adjustLandsForActualCurve(slotCounts, estimatedAvgCmc, actualAvgCmc);
   const adjustedTotalLands = adjustedCounts.totalLands;
   if (adjustedTotalLands !== totalLands) {
-    log.info(`Ajustement lands post-construction`, {
-      estimatedAvgCmc: estimatedAvgCmc.toFixed(2),
-      actualAvgCmc: actualAvgCmc.toFixed(2),
-      totalLands: `${totalLands} → ${adjustedTotalLands}`,
-    });
+    log.info(`Ajustement lands post-construction`, { estimatedAvgCmc: estimatedAvgCmc.toFixed(2), actualAvgCmc: actualAvgCmc.toFixed(2), totalLands: `${totalLands} → ${adjustedTotalLands}` });
   }
 
-  // ── Terrains basiques ──────────────────────────────────────────────────
-  const nonBasicLandsFound = allDeckCards.filter(dc => dc.role === 'Terrains non basiques').length;
-  const landsNeeded = Math.max(0, adjustedTotalLands - nonBasicLandsFound);
-  const colors = commander.color_identity.filter(c => BASIC_LANDS[c]);
+  // ── Phase F bis : terrains basiques ───────────────────────────────────
+  const landsNeeded = Math.max(0, adjustedTotalLands - nonBasicLandsAdded);
+  const colors = (commander.color_identity ?? []).filter(c => BASIC_LANDS[c]);
   const landColors = colors.length > 0 ? colors : ['W'];
-
   const basicLandMap: Record<string, { landName: string; count: number }> = {};
   const perColor = Math.floor(landsNeeded / landColors.length);
   const extra = landsNeeded % landColors.length;
-
   landColors.forEach((color, idx) => {
     const landName = BASIC_LANDS[color];
     const qty = perColor + (idx < extra ? 1 : 0);
@@ -287,7 +301,7 @@ export async function generateDeck(
         legalities: { commander: 'legal' },
         scryfall_uri: `https://scryfall.com/search?q=${encodeURIComponent(`!"${landName}"`)}`,
       } as ScryfallCard,
-      role: 'Terrains basiques',
+      role: BASIC_LAND_LABEL,
       eurPrice: unitPrice * count,
       count,
     });
@@ -302,10 +316,8 @@ export async function generateDeck(
     if (!byRole[dc.role]) byRole[dc.role] = [];
     byRole[dc.role].push(dc);
   }
-
   const totalCards = allDeckCards.reduce((sum, dc) => sum + dc.count, 0);
   const totalMs = Date.now() - globalStart;
-
   log.info(`Génération terminée`, {
     commander: commander.name,
     total_cartes: totalCards,
@@ -313,7 +325,6 @@ export async function generateDeck(
     budget_utilisé: `${Math.round((totalPrice / budgetEur) * 100)}%`,
     durée: `${totalMs}ms`,
   });
-
   if (totalCards < 99) log.warn(`Deck incomplet : ${totalCards}/99 cartes`);
 
   while (cardQueue.length > 0 || isProcessingQueue) {

@@ -1,5 +1,5 @@
 import { ScryfallCard } from './scryfall';
-import { SlotCounts } from './types';
+import { Slot, SlotCounts } from './types';
 import { DEFAULT_SLOT_COUNTS, GENERIC_SUBTYPES } from './slots';
 
 export type Archetype =
@@ -22,33 +22,39 @@ export type Archetype =
   | '+1/+1-counters'
   | 'default';
 
-interface ArchetypeModifier {
-  rampe: number;
-  pioche: number;
-  suppression: number;
-  balayage: number;
-  baseCurve: number;
-}
+// Modifiers : delta sur DEFAULT_SLOT_COUNTS pour chaque slot fonctionnel.
+// `manaFix` est calculé séparément selon colorIdentity.length, pas ici.
+type ArchetypeModifier = {
+  ramp:         number;
+  draw:         number;
+  tutor:        number;
+  spotRemoval:  number;
+  counterspell: number;  // forcé à 0 si U absent de l'identité
+  boardWipe:    number;
+  protection:   number;
+  finisher:     number;
+  baseCurve:    number;
+};
 
 export const ARCHETYPE_MODIFIERS: Record<Archetype, ArchetypeModifier> = {
-  'stax':              { rampe: +2, pioche:  0, suppression: +2, balayage: +1, baseCurve: 3.0 },
-  'spellslinger':      { rampe:  0, pioche: +2, suppression: +1, balayage:  0, baseCurve: 2.7 },
-  'aristocrats':       { rampe:  0, pioche: +1, suppression: -1, balayage: -1, baseCurve: 2.9 },
-  'reanimator':        { rampe:  0, pioche: +1, suppression:  0, balayage: -1, baseCurve: 3.0 },
-  'lands':             { rampe: +4, pioche:  0, suppression: -2, balayage: -1, baseCurve: 3.2 },
-  'control':           { rampe: +1, pioche: +2, suppression: +2, balayage: +1, baseCurve: 3.3 },
-  'combo-tutor':       { rampe: +1, pioche: +2, suppression: -1, balayage: -2, baseCurve: 2.7 },
-  'tokens':            { rampe: -1, pioche:  0, suppression: -1, balayage: -2, baseCurve: 2.5 },
-  'wheel':             { rampe:  0, pioche: +2, suppression:  0, balayage: +1, baseCurve: 2.8 },
-  'enchantress':       { rampe: -1, pioche: +2, suppression: -1, balayage: -1, baseCurve: 2.5 },
-  'aura-voltron':      { rampe: -3, pioche:  0, suppression: -2, balayage: -3, baseCurve: 2.2 },
-  'equipment-voltron': { rampe: -2, pioche:  0, suppression: -1, balayage: -2, baseCurve: 2.4 },
-  'blink':             { rampe:  0, pioche: +1, suppression: -1, balayage:  0, baseCurve: 3.0 },
-  'tribal':            { rampe: -1, pioche:  0, suppression: -1, balayage: -1, baseCurve: 2.7 },
-  'aggro-cheap':       { rampe:  0, pioche:  0, suppression: -1, balayage: -2, baseCurve: 2.3 },
-  'lifegain':          { rampe:  0, pioche:  0, suppression:  0, balayage:  0, baseCurve: 2.9 },
-  '+1/+1-counters':    { rampe:  0, pioche:  0, suppression:  0, balayage:  0, baseCurve: 2.9 },
-  'default':           { rampe:  0, pioche:  0, suppression:  0, balayage:  0, baseCurve: 2.9 },
+  'stax':              { ramp: +2, draw:  0, tutor: +1, spotRemoval: +2, counterspell: +1, boardWipe: +1, protection:  0, finisher:  0, baseCurve: 3.0 },
+  'spellslinger':      { ramp:  0, draw: +2, tutor:  0, spotRemoval: +1, counterspell: +2, boardWipe:  0, protection:  0, finisher:  0, baseCurve: 2.7 },
+  'aristocrats':       { ramp:  0, draw: +1, tutor: +1, spotRemoval: -1, counterspell:  0, boardWipe: -1, protection:  0, finisher:  0, baseCurve: 2.9 },
+  'reanimator':        { ramp:  0, draw: +1, tutor: +2, spotRemoval:  0, counterspell:  0, boardWipe: -1, protection:  0, finisher: +1, baseCurve: 3.0 },
+  'lands':             { ramp: +4, draw:  0, tutor: +1, spotRemoval: -2, counterspell:  0, boardWipe: -1, protection:  0, finisher:  0, baseCurve: 3.2 },
+  'control':           { ramp: +1, draw: +2, tutor: +1, spotRemoval: +2, counterspell: +3, boardWipe: +1, protection: +1, finisher: +1, baseCurve: 3.3 },
+  'combo-tutor':       { ramp: +1, draw: +2, tutor: +4, spotRemoval: -1, counterspell: +2, boardWipe: -2, protection:  0, finisher: +1, baseCurve: 2.7 },
+  'tokens':            { ramp: -1, draw:  0, tutor:  0, spotRemoval: -1, counterspell:  0, boardWipe: -2, protection: +1, finisher:  0, baseCurve: 2.5 },
+  'wheel':             { ramp:  0, draw: +2, tutor:  0, spotRemoval:  0, counterspell: +1, boardWipe: +1, protection:  0, finisher:  0, baseCurve: 2.8 },
+  'enchantress':       { ramp: -1, draw: +2, tutor: +1, spotRemoval: -1, counterspell:  0, boardWipe: -1, protection: +1, finisher:  0, baseCurve: 2.5 },
+  'aura-voltron':      { ramp: -3, draw:  0, tutor: +1, spotRemoval: -2, counterspell:  0, boardWipe: -3, protection: +3, finisher: -1, baseCurve: 2.2 },
+  'equipment-voltron': { ramp: -2, draw:  0, tutor: +1, spotRemoval: -1, counterspell:  0, boardWipe: -2, protection: +3, finisher: -1, baseCurve: 2.4 },
+  'blink':             { ramp:  0, draw: +1, tutor:  0, spotRemoval: -1, counterspell:  0, boardWipe:  0, protection:  0, finisher:  0, baseCurve: 3.0 },
+  'tribal':            { ramp: -1, draw:  0, tutor:  0, spotRemoval: -1, counterspell:  0, boardWipe: -1, protection: +1, finisher:  0, baseCurve: 2.7 },
+  'aggro-cheap':       { ramp:  0, draw:  0, tutor:  0, spotRemoval: -1, counterspell:  0, boardWipe: -2, protection: +1, finisher: -1, baseCurve: 2.3 },
+  'lifegain':          { ramp:  0, draw:  0, tutor:  0, spotRemoval:  0, counterspell:  0, boardWipe:  0, protection:  0, finisher:  0, baseCurve: 2.9 },
+  '+1/+1-counters':    { ramp:  0, draw:  0, tutor:  0, spotRemoval:  0, counterspell:  0, boardWipe:  0, protection:  0, finisher:  0, baseCurve: 2.9 },
+  'default':           { ramp:  0, draw:  0, tutor:  0, spotRemoval:  0, counterspell:  0, boardWipe:  0, protection:  0, finisher:  0, baseCurve: 2.9 },
 };
 
 export function detectArchetype(commander: ScryfallCard, oracleTags: string[]): Archetype {
@@ -56,16 +62,13 @@ export function detectArchetype(commander: ScryfallCard, oracleTags: string[]): 
   const cmc = commander.cmc ?? 0;
   const tags = new Set(oracleTags);
 
-  // Stax : effets de taxe ou de verrouillage (évite le faux positif sur "can't be targeted")
   if (
     tags.has('stax') || tags.has('tax') ||
     /\bspells.{0,30}cost \{[1-9]\} more\b/i.test(text) ||
     /\bdoesn't untap\b/i.test(text) ||
     /\bdon't untap\b/i.test(text) ||
     /\bcan't attack (or|and can't) block\b/i.test(text)
-  ) {
-    return 'stax';
-  }
+  ) return 'stax';
 
   if (/\binstant\b.*\bsorcery\b/i.test(text) || /\bcopy target (instant|sorcery)\b/i.test(text) || tags.has('prowess')) {
     return 'spellslinger';
@@ -79,15 +82,12 @@ export function detectArchetype(commander: ScryfallCard, oracleTags: string[]): 
     return 'reanimator';
   }
 
-  // Lands : commandants qui profitent des terrains qui arrivent ou permettent des poses supplémentaires
   if (
     tags.has('landfall') ||
     /\blandfall\b/i.test(text) ||
     /\bwhenever (a|one or more) lands? enters\b/i.test(text) ||
     /\byou may play (a |an |one |two |up to \w+ )?additional lands?\b/i.test(text)
-  ) {
-    return 'lands';
-  }
+  ) return 'lands';
 
   if (/\bcounter target\b/i.test(text) || (cmc >= 4 && /\bdraw\b.*\beach\b/i.test(text))) {
     return 'control';
@@ -101,26 +101,19 @@ export function detectArchetype(commander: ScryfallCard, oracleTags: string[]): 
     return 'tokens';
   }
 
-  // Wheel : commandants qui font piocher/défausser tous les joueurs
   if (
     tags.has('wheel') ||
     /\beach (player|opponent) draws\b/i.test(text) ||
     /\bwhenever a player draws\b/i.test(text) ||
     /\beach player discards\b/i.test(text)
-  ) {
-    return 'wheel';
-  }
+  ) return 'wheel';
 
-  // Enchantress : moteur de pioche basé sur les enchantements
   if (
     tags.has('enchantress') ||
     /\bwhenever you cast an enchantment\b/i.test(text) ||
     /\bwhenever an enchantment (enters|you control)\b/i.test(text)
-  ) {
-    return 'enchantress';
-  }
+  ) return 'enchantress';
 
-  // Aura-voltron : tutore des auras ou grossit grâce aux auras attachées
   const hasAuraTag = tags.has('aura') || tags.has('voltron');
   const hasAuraText = /\baura\b/i.test(text) && (
     /\bsearch your library\b/i.test(text) ||
@@ -129,24 +122,18 @@ export function detectArchetype(commander: ScryfallCard, oracleTags: string[]): 
   );
   if (hasAuraTag || hasAuraText) return 'aura-voltron';
 
-  // Equipment-voltron : stratégie centrée sur les équipements
   if (
     tags.has('equipment') ||
     /\bfor each equipment\b/i.test(text) ||
     /\bwhenever.{0,40}equipped\b/i.test(text) ||
     /\bsearch your library for an? equipment\b/i.test(text) ||
     /\battach any number of.{0,40}equipment\b/i.test(text)
-  ) {
-    return 'equipment-voltron';
-  }
+  ) return 'equipment-voltron';
 
-  // Blink : exiler ses propres permanents pour les faire revenir avec leurs ETB
   if (
     tags.has('blink') || tags.has('flicker') ||
     (/\bwhenever\b/i.test(text) && /\bexile\b/i.test(text) && /\breturn (it|them|those cards)\b.*\bbattlefield\b/i.test(text))
-  ) {
-    return 'blink';
-  }
+  ) return 'blink';
 
   const subtypePart = commander.type_line?.split('—')[1];
   if (subtypePart) {
@@ -187,6 +174,14 @@ function colorLandsDelta(colorCount: number): number {
   return 1;
 }
 
+// Mana-fixing : 0 en mono, scale avec le nombre de couleurs
+function manaFixCount(colorCount: number): number {
+  if (colorCount <= 1) return 0;
+  if (colorCount === 2) return 2;
+  if (colorCount === 3) return 4;
+  return 5;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -202,36 +197,61 @@ export function computeSlotCounts(commander: ScryfallCard, oracleTags: string[])
   const modifier = ARCHETYPE_MODIFIERS[archetype];
   const estimatedAvgCmc = estimateAvgCmc(archetype, commander);
 
+  const colorIdentity = commander.color_identity ?? [];
+  const colorCount = colorIdentity.length;
+  const hasBlue = colorIdentity.includes('U');
+
   const extraRamp = Math.round(Math.max(0, estimatedAvgCmc - 2.8) * 3.0);
   const landsFromCurve = Math.round(31 + estimatedAvgCmc * 2.0);
-  const colorCount = commander.color_identity?.length ?? 0;
   const colorDelta = colorLandsDelta(colorCount);
 
-  let Rampe       = clamp(DEFAULT_SLOT_COUNTS.Rampe + extraRamp + modifier.rampe, 7, 15);
-  let Pioche      = clamp(DEFAULT_SLOT_COUNTS.Pioche + modifier.pioche, 7, 14);
-  let Suppression = clamp(DEFAULT_SLOT_COUNTS.Suppression + modifier.suppression, 4, 12);
-  let Balayage    = clamp(DEFAULT_SLOT_COUNTS.Balayage + modifier.balayage, 1, 6);
+  const ramp       = clamp(DEFAULT_SLOT_COUNTS['ramp']         + extraRamp + modifier.ramp,         7, 15);
+  const manaFix    = clamp(manaFixCount(colorCount),                                                0,  8);
+  const draw       = clamp(DEFAULT_SLOT_COUNTS['draw']         + modifier.draw,                     7, 14);
+  let tutor        = clamp(DEFAULT_SLOT_COUNTS['tutor']        + modifier.tutor,                    0,  8);
+  let spotRemoval  = clamp(DEFAULT_SLOT_COUNTS['spot-removal'] + modifier.spotRemoval,              4, 12);
+  let counterspell = hasBlue
+    ? clamp(DEFAULT_SLOT_COUNTS['counterspell'] + modifier.counterspell, 0, 8)
+    : 0;
+  let boardWipe    = clamp(DEFAULT_SLOT_COUNTS['board-wipe']   + modifier.boardWipe,                1,  6);
+  let protection   = clamp(DEFAULT_SLOT_COUNTS['protection']   + modifier.protection,               0,  6);
+  let finisher     = clamp(DEFAULT_SLOT_COUNTS['finisher']     + modifier.finisher,                 0,  4);
   const totalLands = clamp(landsFromCurve + colorDelta, 33, 42);
 
-  let Synergie = 99 - (Rampe + Pioche + Suppression + Balayage + totalLands);
+  const sumNonSyn = ramp + manaFix + draw + tutor + spotRemoval + counterspell + boardWipe + protection + finisher;
+  let synergy = 99 - (sumNonSyn + totalLands);
 
-  if (Synergie < 15) {
-    const deficit = 15 - Synergie;
-    const fromSuppr = Math.min(deficit, Suppression - 4);
-    Suppression -= fromSuppr;
-    const stillNeeded = deficit - fromSuppr;
-    if (stillNeeded > 0) {
-      const fromBalay = Math.min(stillNeeded, Balayage - 1);
-      Balayage -= fromBalay;
-    }
-    Synergie = 99 - (Rampe + Pioche + Suppression + Balayage + totalLands);
+  // Garantir un minimum de 15 cartes synergie en grattant sur les slots les plus extensibles
+  if (synergy < 15) {
+    let deficit = 15 - synergy;
+    const grabFrom = (current: number, min: number): [number, number] => {
+      const grab = Math.min(deficit, current - min);
+      return [Math.max(min, current - grab), Math.max(0, deficit - grab)];
+    };
+    [spotRemoval, deficit] = grabFrom(spotRemoval, 4);
+    if (deficit > 0) [boardWipe,    deficit] = grabFrom(boardWipe,    1);
+    if (deficit > 0) [tutor,        deficit] = grabFrom(tutor,        0);
+    if (deficit > 0) [counterspell, deficit] = grabFrom(counterspell, 0);
+    if (deficit > 0) [protection,   deficit] = grabFrom(protection,   0);
+    if (deficit > 0) [finisher,     deficit] = grabFrom(finisher,     0);
+    synergy = 99 - (ramp + manaFix + draw + tutor + spotRemoval + counterspell + boardWipe + protection + finisher + totalLands);
   }
 
-  return {
-    counts: { Rampe, Pioche, Suppression, Balayage, Synergie, totalLands },
-    archetype,
-    estimatedAvgCmc,
+  const counts: SlotCounts = {
+    'ramp':         ramp,
+    'mana-fix':     manaFix,
+    'draw':         draw,
+    'tutor':        tutor,
+    'spot-removal': spotRemoval,
+    'counterspell': counterspell,
+    'board-wipe':   boardWipe,
+    'protection':   protection,
+    'finisher':     finisher,
+    'synergy':      synergy,
+    totalLands,
   };
+
+  return { counts, archetype, estimatedAvgCmc };
 }
 
 export function adjustLandsForActualCurve(
@@ -249,166 +269,13 @@ export function adjustLandsForActualCurve(
   if (newTotalLands === counts.totalLands) return counts;
 
   const landDelta = newTotalLands - counts.totalLands;
-  const newSynergie = counts.Synergie - landDelta;
-  return { ...counts, totalLands: newTotalLands, Synergie: newSynergie };
+  const newSynergy = counts.synergy - landDelta;
+  return { ...counts, totalLands: newTotalLands, synergy: newSynergy };
 }
 
-export const ARCHETYPE_SLOT_QUERIES: Partial<Record<
-  Archetype,
-  Partial<Record<'Rampe' | 'Pioche' | 'Suppression' | 'Balayage', ((ci: string) => string)[]>>
->> = {
-  'aristocrats': {
-    Rampe: [
-      (ci) => `o:"sacrifice" o:"add {" ${ci} format:commander`,
-    ],
-    Pioche: [
-      (ci) => `o:"dies" o:"draw" ${ci} format:commander`,
-      (ci) => `o:"sacrifice" o:"draw" ${ci} format:commander`,
-    ],
-    Suppression: [
-      (ci) => `o:"each player sacrifices" type:sorcery ${ci} format:commander`,
-      (ci) => `o:"each player sacrifices" type:creature ${ci} format:commander`,
-      (ci) => `o:"sacrifice a creature" type:instant ${ci} format:commander`,
-    ],
-  },
-  'reanimator': {
-    Pioche: [
-      (ci) => `o:"discard" o:"draw" (type:instant OR type:sorcery) ${ci} format:commander`,
-      (ci) => `o:"mill" o:"draw" ${ci} format:commander`,
-    ],
-    Suppression: [
-      (ci) => `o:"sacrifice" (type:instant OR type:sorcery) ${ci} format:commander`,
-    ],
-  },
-  'spellslinger': {
-    Rampe: [
-      (ci) => `o:"add {" (type:instant OR type:sorcery) ${ci} format:commander`,
-    ],
-    Pioche: [
-      (ci) => `o:"whenever you cast" o:"draw" ${ci} format:commander`,
-      (ci) => `o:"magecraft" ${ci} format:commander`,
-    ],
-    Balayage: [
-      (ci) => `o:"overload" ${ci} format:commander`,
-    ],
-  },
-  'lands': {
-    Rampe: [
-      (ci) => `o:"search your library" o:"land card" ${ci} format:commander`,
-      (ci) => `o:"play an additional land" ${ci} format:commander`,
-      (ci) => `o:"put" o:"land" o:"onto the battlefield" ${ci} format:commander`,
-    ],
-    Pioche: [
-      (ci) => `o:"landfall" o:"draw" ${ci} format:commander`,
-      (ci) => `o:"whenever a land" o:"draw" ${ci} format:commander`,
-    ],
-  },
-  'enchantress': {
-    Rampe: [
-      (ci) => `o:"add {" type:enchantment ${ci} format:commander`,
-    ],
-    Pioche: [
-      (ci) => `o:"whenever you cast an enchantment" o:"draw" ${ci} format:commander`,
-      (ci) => `o:"whenever an enchantment" o:"draw" ${ci} format:commander`,
-      (ci) => `otag:enchantress ${ci} format:commander`,
-    ],
-    Suppression: [
-      (ci) => `(o:"destroy target" OR o:"exile target") type:enchantment ${ci} format:commander`,
-    ],
-  },
-  'blink': {
-    Pioche: [
-      (ci) => `o:"enters" o:"draw" type:creature ${ci} format:commander`,
-      (ci) => `o:"enters the battlefield" o:"draw" ${ci} format:commander`,
-    ],
-    Suppression: [
-      (ci) => `o:"enters" o:"destroy target" type:creature ${ci} format:commander`,
-      (ci) => `o:"enters" o:"exile target" type:creature ${ci} format:commander`,
-      (ci) => `o:"enters the battlefield" (o:"destroy target" OR o:"exile target") ${ci} format:commander`,
-    ],
-  },
-  'tokens': {
-    Rampe: [
-      (ci) => `o:"sacrifice" o:"add {" ${ci} format:commander`,
-    ],
-    Pioche: [
-      (ci) => `o:"token" o:"draw" ${ci} format:commander`,
-      (ci) => `o:"creature you control" o:"draw" ${ci} format:commander`,
-    ],
-    Suppression: [
-      (ci) => `o:"sacrifice a creature" (type:instant OR type:sorcery) ${ci} format:commander`,
-    ],
-    Balayage: [
-      (ci) => `o:"non-token" o:"destroy" type:sorcery ${ci} format:commander`,
-    ],
-  },
-  'control': {
-    Pioche: [
-      (ci) => `o:"draw" o:"card" type:instant ${ci} format:commander`,
-    ],
-    Suppression: [
-      (ci) => `o:"counter target" type:instant ${ci} format:commander`,
-      (ci) => `(o:"destroy target" OR o:"exile target") type:instant ${ci} format:commander`,
-    ],
-    Balayage: [
-      (ci) => `o:"destroy all creatures" type:sorcery ${ci} format:commander`,
-      (ci) => `o:"exile all" type:sorcery ${ci} format:commander`,
-    ],
-  },
-  'wheel': {
-    Pioche: [
-      (ci) => `o:"each player draws" ${ci} format:commander`,
-      (ci) => `o:"discard" o:"draw" ${ci} format:commander`,
-    ],
-  },
-  'equipment-voltron': {
-    Pioche: [
-      (ci) => `o:"whenever" o:"equipped" o:"draw" ${ci} format:commander`,
-      (ci) => `o:"draw" o:"card" type:artifact ${ci} format:commander`,
-    ],
-  },
-  'aura-voltron': {
-    Rampe: [
-      (ci) => `o:"add {" type:enchantment ${ci} format:commander`,
-    ],
-    Pioche: [
-      (ci) => `o:"whenever you cast an aura" o:"draw" ${ci} format:commander`,
-      (ci) => `o:"aura" o:"draw" ${ci} format:commander`,
-      (ci) => `otag:enchantress ${ci} format:commander`,
-    ],
-  },
-  'lifegain': {
-    Pioche: [
-      (ci) => `o:"whenever you gain life" o:"draw" ${ci} format:commander`,
-    ],
-  },
-  '+1/+1-counters': {
-    Pioche: [
-      (ci) => `o:"+1/+1 counter" o:"draw" ${ci} format:commander`,
-    ],
-    Suppression: [
-      (ci) => `o:"remove" o:"counter" o:"destroy" ${ci} format:commander`,
-    ],
-  },
-  'combo-tutor': {
-    Pioche: [
-      (ci) => `o:"search your library" o:"card" (type:instant OR type:sorcery) ${ci} format:commander`,
-      (ci) => `o:"draw" o:"card" type:instant ${ci} format:commander`,
-    ],
-    Suppression: [
-      (ci) => `(o:"destroy target" OR o:"exile target") type:instant ${ci} format:commander`,
-    ],
-  },
-  'aggro-cheap': {
-    Pioche: [
-      (ci) => `o:"whenever" o:"attacks" o:"draw" ${ci} format:commander`,
-      (ci) => `o:"whenever" o:"deals combat damage" o:"draw" ${ci} format:commander`,
-    ],
-  },
-  'stax': {
-    Suppression: [
-      (ci) => `o:"cost" o:"more to cast" type:enchantment ${ci} format:commander`,
-      (ci) => `(o:"destroy target" OR o:"exile target") type:instant ${ci} format:commander`,
-    ],
-  },
-};
+// Helper pour itérer sur les slots non-terrains de SlotCounts
+export const FUNCTIONAL_SLOTS: Slot[] = [
+  'ramp', 'mana-fix', 'draw', 'tutor',
+  'spot-removal', 'counterspell', 'board-wipe',
+  'protection', 'finisher', 'synergy',
+];

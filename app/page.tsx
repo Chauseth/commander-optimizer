@@ -32,9 +32,15 @@ interface DeckResult {
 
 const ROLE_ICONS: Record<string, string> = {
   'Rampe': '⚡',
+  'Mana-fixing': '🌈',
   'Pioche': '📖',
+  'Tuteurs': '🔍',
   'Suppression': '⚔️',
+  'Contresorts': '🛡️',
   'Balayage': '🌊',
+  'Protection': '🪬',
+  'Finisher': '💀',
+  'Synergie': '✦',
   'Créature': '🐲',
   'Éphémère': '💫',
   'Rituel': '📜',
@@ -92,27 +98,35 @@ function CardSmall({ card, eurPrice, count, isSynergy }: { card: CardData; eurPr
 }
 
 const STEPS = [
-  { key: 'commander',        label: 'Recherche du commander'      },
-  { key: 'tagger',           label: 'Tags Scryfall Tagger'        },
-  { key: 'Rampe',            label: 'Rampe (mana)'                },
-  { key: 'Pioche',           label: 'Pioche (card draw)'          },
-  { key: 'Suppression',      label: 'Suppression (removal)'       },
-  { key: 'Balayage',         label: 'Balayage (wipes)'            },
-  { key: 'Synergie',         label: 'Cartes synergiques'           },
+  { key: 'commander',             label: 'Recherche du commander'      },
+  { key: 'tagger',                label: 'Tags Scryfall Tagger'        },
+  { key: 'pool',                  label: 'Construction du pool'         },
+  { key: 'scoring',               label: 'Scoring des cartes'           },
+  { key: 'dispatch',              label: 'Dispatch par slot'            },
+  { key: 'Upgrade',               label: 'Optimisation budget'         },
   { key: 'Terrains non basiques', label: 'Terrains non basiques'       },
-  { key: 'Upgrade',          label: 'Optimisation budget'         },
-  { key: 'done',             label: 'Finalisation'                },
+  { key: 'done',                  label: 'Finalisation'                },
 ];
 
 const SLOT_CONFIG = [
-  { key: 'Rampe',       label: 'Rampe',       desc: 'Mana rocks & accélération',  icon: '⚡', min: 0,  max: 20 },
-  { key: 'Pioche',      label: 'Pioche',      desc: 'Effets de pioche de cartes',  icon: '📖', min: 0,  max: 20 },
-  { key: 'Suppression', label: 'Suppression', desc: 'Removal ciblé',               icon: '⚔️', min: 0,  max: 15 },
-  { key: 'Balayage',    label: 'Balayage',    desc: 'Destructions de masse',        icon: '🌊', min: 0,  max: 10 },
-  { key: 'Synergie',    label: 'Synergies',   desc: 'Cartes synergiques Commander', icon: '✦',  min: 5,  max: 50 },
+  { key: 'ramp',         label: 'Rampe',         desc: 'Mana rocks & accélération',     icon: '⚡',  min: 0, max: 20 },
+  { key: 'mana-fix',     label: 'Mana-fixing',   desc: 'Terrains multicolore',           icon: '🌈', min: 0, max: 8  },
+  { key: 'draw',         label: 'Pioche',        desc: 'Effets de pioche',               icon: '📖', min: 0, max: 20 },
+  { key: 'tutor',        label: 'Tuteurs',       desc: 'Recherche de carte',             icon: '🔍', min: 0, max: 8  },
+  { key: 'spot-removal', label: 'Suppression',   desc: 'Removal ciblé',                  icon: '⚔️', min: 0, max: 15 },
+  { key: 'counterspell', label: 'Contresorts',   desc: 'Counterspells (bleu requis)',    icon: '🛡️', min: 0, max: 8  },
+  { key: 'board-wipe',   label: 'Balayage',      desc: 'Destructions de masse',          icon: '🌊', min: 0, max: 10 },
+  { key: 'protection',   label: 'Protection',    desc: 'Hexproof, indestructible…',      icon: '🪬', min: 0, max: 6  },
+  { key: 'finisher',     label: 'Finisher',      desc: 'Win-cons & gros closers',        icon: '💀', min: 0, max: 4  },
+  { key: 'synergy',      label: 'Synergies',     desc: 'Cartes synergiques Commander',   icon: '✦',  min: 5, max: 50 },
 ] as const;
 
-const DEFAULT_COUNTS = { Rampe: 10, Pioche: 10, Suppression: 8, Balayage: 3, Synergie: 31, totalLands: 37 };
+const DEFAULT_COUNTS: Record<string, number> = {
+  'ramp': 10, 'mana-fix': 0, 'draw': 10, 'tutor': 0,
+  'spot-removal': 7, 'counterspell': 0, 'board-wipe': 3,
+  'protection': 2, 'finisher': 1, 'synergy': 26,
+  totalLands: 37,
+};
 
 export default function Home() {
   const [query, setQuery] = useState('');

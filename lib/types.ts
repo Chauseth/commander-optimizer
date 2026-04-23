@@ -17,14 +17,20 @@ export interface GeneratedDeck {
   byRole: Record<string, DeckCard[]>;
 }
 
-export interface SlotCounts {
-  Rampe: number;
-  Pioche: number;
-  Suppression: number;
-  Balayage: number;
-  Synergie: number;
-  totalLands: number;
-}
+// Clés internes (anglais) — labels FR via SLOT_LABEL_FR dans slots.ts
+export type Slot =
+  | 'ramp'
+  | 'mana-fix'
+  | 'draw'
+  | 'tutor'
+  | 'spot-removal'
+  | 'counterspell'
+  | 'board-wipe'
+  | 'protection'
+  | 'finisher'
+  | 'synergy';
+
+export type SlotCounts = Record<Slot, number> & { totalLands: number };
 
 export interface ProgressEvent {
   step: string;

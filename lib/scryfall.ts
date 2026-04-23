@@ -60,13 +60,49 @@ export async function autocomplete(query: string): Promise<string[]> {
   return (data.data as ScryfallCard[] || []).map((c: ScryfallCard) => c.name);
 }
 
-// Cherche des cartes avec un filtre Scryfall
-export async function searchCards(query: string): Promise<ScryfallCard[]> {
-  const url = `${BASE}/cards/search?q=${encodeURIComponent(query)}&order=edhrec&dir=asc`;
-  const res = await fetchWithRetry(url);
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.data || [];
+// ─── Cache LRU mémoire pour searchCards ───────────────────────────────────
+const SEARCH_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min
+const SEARCH_CACHE_MAX = 200;
+const searchCache = new Map<string, { cards: ScryfallCard[]; expiresAt: number }>();
+
+function cacheGet(key: string): ScryfallCard[] | null {
+  const entry = searchCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt < Date.now()) { searchCache.delete(key); return null; }
+  // LRU : remettre en queue d'insertion
+  searchCache.delete(key);
+  searchCache.set(key, entry);
+  return entry.cards;
+}
+
+function cacheSet(key: string, cards: ScryfallCard[]) {
+  if (searchCache.size >= SEARCH_CACHE_MAX) {
+    const oldest = searchCache.keys().next().value;
+    if (oldest !== undefined) searchCache.delete(oldest);
+  }
+  searchCache.set(key, { cards, expiresAt: Date.now() + SEARCH_CACHE_TTL_MS });
+}
+
+// Cherche des cartes avec un filtre Scryfall (pagination optionnelle)
+export async function searchCards(query: string, maxPages = 1): Promise<ScryfallCard[]> {
+  const cacheKey = `${maxPages}|${query}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
+
+  const all: ScryfallCard[] = [];
+  let url: string | null = `${BASE}/cards/search?q=${encodeURIComponent(query)}&order=edhrec&dir=asc`;
+  let page = 0;
+  while (url && page < maxPages) {
+    const res: Response = await fetchWithRetry(url);
+    if (!res.ok) break;
+    const data: { data?: ScryfallCard[]; has_more?: boolean; next_page?: string } = await res.json();
+    if (data.data) all.push(...data.data);
+    page++;
+    url = data.has_more && data.next_page ? data.next_page : null;
+    if (url) await new Promise(r => setTimeout(r, 100)); // rate-limit Scryfall
+  }
+  cacheSet(cacheKey, all);
+  return all;
 }
 
 // Formate l'identité de couleur pour les requêtes Scryfall
