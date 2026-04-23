@@ -140,7 +140,12 @@ export function detectArchetype(commander: ScryfallCard, oracleTags: string[]): 
   }
 
   if (tags.has('lifegain')) return 'lifegain';
-  if (tags.has('+1/+1-counters')) return '+1/+1-counters';
+  if (
+    tags.has('+1/+1-counters') ||
+    tags.has('proliferate') ||
+    /\bproliferate\b/i.test(text) ||
+    /\+1\/\+1 counter/i.test(text)
+  ) return '+1/+1-counters';
 
   // Tribal : uniquement si le Commander référence vraiment son sous-type dans son
   // oracle text. Check en dernier pour ne pas écraser les archétypes basés sur les
