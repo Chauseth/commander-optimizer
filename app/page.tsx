@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 
 interface CardData {
   id: string;
@@ -207,10 +208,12 @@ export default function Home() {
           if (!line.trim()) continue;
           const event = JSON.parse(line);
           if (event.type === 'progress') {
-            setCurrentStep(event.step);
-            setCompletedSteps(prev => {
-              const idx = STEPS.findIndex(s => s.key === event.step);
-              return STEPS.slice(0, idx).map(s => s.key);
+            flushSync(() => {
+              setCurrentStep(event.step);
+              setCompletedSteps(prev => {
+                const idx = STEPS.findIndex(s => s.key === event.step);
+                return STEPS.slice(0, idx).map(s => s.key);
+              });
             });
           } else if (event.type === 'card' && event.image) {
             const id = ++cardIdRef.current;
