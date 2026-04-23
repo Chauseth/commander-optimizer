@@ -75,6 +75,19 @@ export const GENERIC_SUBTYPES = new Set([
   'rogue', 'knight', 'soldier', 'druid', 'monk',
 ]);
 
+// Retourne true si l'oracle text du Commander référence le sous-type dans un
+// contexte tribal (synergies avec les autres créatures du même type).
+export function hasTribalSynergy(subtype: string, oracleText: string): boolean {
+  return (
+    new RegExp(`\\bother ${subtype}\\b`, 'i').test(oracleText) ||
+    new RegExp(`\\b${subtype}s? you control\\b`, 'i').test(oracleText) ||
+    new RegExp(`\\bwhenever (a|an|another|one or more) ${subtype}\\b`, 'i').test(oracleText) ||
+    new RegExp(`\\bcreate .{0,30}\\b${subtype}\\b`, 'i').test(oracleText) ||
+    new RegExp(`\\beach ${subtype}\\b`, 'i').test(oracleText) ||
+    new RegExp(`\\bnumber of ${subtype}\\b`, 'i').test(oracleText)
+  );
+}
+
 // ─── Requêtes statiques par slot (otag-first + fallback oracle_text) ─────
 export const SLOT_QUERIES: Record<Slot, QueryDescriptor[]> = {
   'ramp': [
@@ -158,12 +171,16 @@ export function buildSynergyDescriptors(
     });
   }
 
-  // Tribal : sous-types non génériques du type_line
+  // Tribal : sous-types non génériques du type_line, uniquement si le Commander
+  // référence vraiment le sous-type dans son oracle text (évite les faux positifs
+  // comme Atraxa — Phyrexian Angel Horror — classée tribal à tort).
   const subtypePart = commander.type_line?.split('—')[1];
   if (subtypePart) {
+    const commanderText = commander.oracle_text ?? '';
     const subtypes = subtypePart.trim().split(/\s+/)
       .filter(s => s.length > 2 && !GENERIC_SUBTYPES.has(s.toLowerCase()));
     for (const subtype of subtypes.slice(0, 2)) {
+      if (!hasTribalSynergy(subtype, commanderText)) continue;
       out.push({
         id: `syn.tribal.${subtype.toLowerCase()}`,
         slots: ['synergy'],
