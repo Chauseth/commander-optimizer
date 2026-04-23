@@ -1,6 +1,6 @@
 import { ScryfallCard } from './scryfall';
 import { Slot, SlotCounts } from './types';
-import { DEFAULT_SLOT_COUNTS, GENERIC_SUBTYPES } from './slots';
+import { DEFAULT_SLOT_COUNTS, GENERIC_SUBTYPES, hasTribalSynergy } from './slots';
 
 export type Archetype =
   | 'stax'
@@ -135,19 +135,23 @@ export function detectArchetype(commander: ScryfallCard, oracleTags: string[]): 
     (/\bwhenever\b/i.test(text) && /\bexile\b/i.test(text) && /\breturn (it|them|those cards)\b.*\bbattlefield\b/i.test(text))
   ) return 'blink';
 
-  const subtypePart = commander.type_line?.split('—')[1];
-  if (subtypePart) {
-    const subtypes = subtypePart.trim().split(/\s+/)
-      .filter(s => s.length > 2 && !GENERIC_SUBTYPES.has(s.toLowerCase()));
-    if (subtypes.length > 0) return 'tribal';
-  }
-
   if (cmc <= 3 && (/\bhaste\b/i.test(text) || (tags.has('+1/+1-counters') && commander.type_line?.includes('Creature')))) {
     return 'aggro-cheap';
   }
 
   if (tags.has('lifegain')) return 'lifegain';
   if (tags.has('+1/+1-counters')) return '+1/+1-counters';
+
+  // Tribal : uniquement si le Commander référence vraiment son sous-type dans son
+  // oracle text. Check en dernier pour ne pas écraser les archétypes basés sur les
+  // oracle tags Tagger (ex : Atraxa — Phyrexian Angel Horror — est +1/+1-counters,
+  // pas tribal).
+  const subtypePart = commander.type_line?.split('—')[1];
+  if (subtypePart) {
+    const subtypes = subtypePart.trim().split(/\s+/)
+      .filter(s => s.length > 2 && !GENERIC_SUBTYPES.has(s.toLowerCase()));
+    if (subtypes.some(s => hasTribalSynergy(s, text))) return 'tribal';
+  }
 
   return 'default';
 }
