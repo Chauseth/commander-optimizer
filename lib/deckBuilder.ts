@@ -193,7 +193,9 @@ export async function generateDeck(
 
     const upgradeCandidates = [...assigned].sort((a, b) => a.price - b.price);
     let upgradeCount = 0;
-    const maxUpgrades = Math.min(10, Math.floor(remainingBudget / 2));
+    // Les garde-fous internes (remainingBudget < 1, delta de prix minimum) arrêtent
+    // naturellement les upgrades — pas besoin de plafonner via remainingBudget / 2.
+    const maxUpgrades = Math.min(15, assigned.length);
 
     for (const cand of upgradeCandidates) {
       if (upgradeCount >= maxUpgrades || remainingBudget < 1) break;
@@ -237,9 +239,10 @@ export async function generateDeck(
   onProgress?.({ step: NONBASIC_LAND_LABEL });
   await waitForAnimations();
 
-  // Score les land entries (pour les classer) — le pool a déjà des scores mais
-  // les lands utilitaires n'ont aucun slot fonctionnel, donc score = 0. On utilise edhrec_rank seul.
-  landPool.sort((a, b) => (a.card.edhrec_rank ?? 99999) - (b.card.edhrec_rank ?? 99999));
+  // Les lands ont déjà un score vectoriel complet (Phase C) : popularité, archetypeFit,
+  // priceEfficiency, queryFrequency. On trie par score décroissant pour que les terres
+  // thématiques (ex: Phyrexian Tower en aristocrats, Nykthos en mono) remontent naturellement.
+  landPool.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
 
   let nonBasicLandsAdded = 0;
   for (const entry of landPool) {
