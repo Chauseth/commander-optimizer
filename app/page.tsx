@@ -141,6 +141,7 @@ export default function Home() {
   const [showCards, setShowCards] = useState(false);
   const cardIdRef = useRef(0);
   const [deck, setDeck] = useState<DeckResult | null>(null);
+  const [fromCache, setFromCache] = useState(false);
   const [error, setError] = useState('');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [counts, setCounts] = useState<Record<string, number>>({ ...DEFAULT_COUNTS });
@@ -183,6 +184,7 @@ export default function Home() {
     setLoading(true);
     setError('');
     setDeck(null);
+    setFromCache(false);
     setCurrentStep(null);
     setCompletedSteps([]);
     setCardImages([]);
@@ -234,6 +236,7 @@ export default function Home() {
             setCompletedSteps(STEPS.map(s => s.key));
             setCurrentStep(null);
             setDeck(event.deck);
+            setFromCache(!!event.fromCache);
             // Garder les cartes visibles 5s après la fin pour voir les dernières animations
             setTimeout(() => setShowCards(false), 5000);
           } else if (event.type === 'error') {
@@ -496,6 +499,11 @@ export default function Home() {
                   <span className="text-sm"><span className="text-gray-400">Total :</span> <span className="font-semibold text-green-400">{deck.totalPrice.toFixed(2)}€</span></span>
                   <span className="text-sm"><span className="text-gray-400">Budget :</span> <span className="font-semibold">{deck.budgetUsed}%</span></span>
                   <span className="text-sm"><span className="text-gray-400">Cartes :</span> <span className="font-semibold">{deck.totalCards}/99</span></span>
+                  {fromCache && (
+                    <span className="text-xs text-blue-400/70 flex items-center gap-1" title="Résultat servi depuis le cache (1h)">
+                      <span>⚡</span> cache
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

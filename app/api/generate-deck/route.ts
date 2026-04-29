@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getCommander } from '../../../lib/scryfall';
 import { generateDeck, SlotCounts, ProgressEvent } from '../../../lib/deckBuilder';
+import { buildCacheKey, getCached, setCached, getCacheStats } from '../../../lib/cache';
 
 export async function POST(req: NextRequest) {
   const { commanderName, budget, slotCounts } = await req.json();
@@ -46,6 +47,16 @@ export async function POST(req: NextRequest) {
           return;
         }
 
+        const cacheKey = buildCacheKey(commander.name, budgetNum, counts);
+        const cached = getCached(cacheKey);
+        if (cached) {
+          const stats = getCacheStats();
+          console.log(`[${ts()}] INFO  Cache HIT pour ${commander.name} (${stats.size}/${stats.maxSize} entrées)`);
+          send(controller, { type: 'done', deck: cached, fromCache: true });
+          controller.close();
+          return;
+        }
+
         const deck = await generateDeck(commander, budgetNum, (event: ProgressEvent) => {
           if (event.cardImage) {
             if (event.upgradeOldImage) {
@@ -58,6 +69,8 @@ export async function POST(req: NextRequest) {
           }
         }, counts);
 
+        setCached(cacheKey, deck);
+        console.log(`[${ts()}] INFO  Cache MISS stocké (${getCacheStats().size} entrées)`);
         send(controller, { type: 'done', deck });
         console.log(`[${ts()}] INFO  Réponse envoyée (${Date.now() - start}ms total)`);
       } catch (error: unknown) {
