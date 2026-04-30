@@ -1,36 +1,78 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Commander Optimizer
 
-## Getting Started
+Commander Optimizer genere des listes Commander budget pour Magic: The Gathering.
+L'application prend un commander et un budget en euros, detecte un archetype, puis
+assemble un deck de 99 cartes autour de slots fonctionnels: rampe, pioche,
+tuteurs, removals, contresorts, protection, finishers, synergies et terrains.
 
-First, run the development server:
+## Stack
+
+- Next.js App Router
+- React
+- TypeScript
+- Tailwind CSS
+- Vitest pour les tests unitaires du moteur
+- Scryfall et Scryfall Tagger comme sources de donnees
+
+## Architecture
+
+- `app/page.tsx`: interface principale, formulaire, animation de generation,
+  affichage du deck et export texte.
+- `app/api/generate-deck/route.ts`: route stream NDJSON qui valide la requete,
+  resout le commander, lit/ecrit le cache et lance le moteur.
+- `lib/scryfall.ts`: client Scryfall, autocomplete, recherche paginee, prix EUR
+  et lecture best-effort des tags Tagger.
+- `lib/formula.ts`: detection d'archetype et calcul dynamique des slots.
+- `lib/slots.ts`: descriptors Scryfall par slot et descriptors de synergie.
+- `lib/pool.ts`: construction du pool commun et dispatch glouton.
+- `lib/scoring.ts`: score vectoriel des cartes candidates.
+- `lib/validation.ts`: validation pure des entrees serveur.
+
+## Commandes locales
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run lint
+npm run build
+npm test
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Le serveur de dev expose l'application sur `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Qualite
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+La CI GitHub Actions s'execute sur `master` et sur les pull requests vers
+`master`. Elle lance:
 
-## Learn More
+```bash
+npm ci
+npm run lint
+npm run build
+npm test
+```
 
-To learn more about Next.js, take a look at the following resources:
+Les tests unitaires couvrent les fonctions pures du moteur, notamment la
+detection d'archetype, la repartition des slots, les helpers tribaux et la
+validation des entrees de generation.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Commanders utiles pour tester
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Atraxa, Praetors' Voice: doit favoriser les strategies counters/proliferate,
+  sans etre classee tribal uniquement a cause de ses sous-types.
+- Light-Paws, Emperor's Voice: doit etre detectee comme aura-voltron.
+- Talrand, Sky Summoner: bon cas spellslinger mono-bleu.
+- Meren of Clan Nel Toth: bon cas graveyard/reanimator.
+- Un commander sans bleu: doit produire zero contresort.
+- Un commander trois couleurs ou plus: doit activer du mana-fixing.
 
-## Deploy on Vercel
+## Limites connues
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Les prix viennent de Scryfall et peuvent etre absents ou differer du prix reel
+  Cardmarket au moment de l'achat.
+- L'integration Tagger utilise une route GraphQL non documentee. Si Tagger change
+  son fonctionnement, l'application degrade vers moins de signaux de synergie.
+- Le moteur est heuristique: il cherche une liste budget coherente, pas une liste
+  competitive parfaite ni une simulation de metagame.
+- Le cache est en memoire process, avec une duree de vie d'une heure. Il n'est
+  pas partage entre instances.

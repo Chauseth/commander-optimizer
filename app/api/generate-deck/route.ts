@@ -1,11 +1,10 @@
 import { NextRequest } from 'next/server';
 import { getCommander } from '../../../lib/scryfall';
-import { generateDeck, SlotCounts, ProgressEvent } from '../../../lib/deckBuilder';
+import { generateDeck, ProgressEvent } from '../../../lib/deckBuilder';
 import { buildCacheKey, getCached, setCached, getCacheStats } from '../../../lib/cache';
+import { parseGenerateDeckInput, ValidationError } from '../../../lib/validation';
 
 export async function POST(req: NextRequest) {
-  const { commanderName, budget, slotCounts } = await req.json();
-
   const encoder = new TextEncoder();
   const send = (controller: ReadableStreamDefaultController, data: object) => {
     controller.enqueue(encoder.encode(JSON.stringify(data) + '\n'));
@@ -16,24 +15,10 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const start = Date.now();
-      console.log(`[${ts()}] INFO  POST /api/generate-deck`, JSON.stringify({ commanderName, budget, slotCounts }));
       try {
-        if (!commanderName || !budget) {
-          console.error(`[${ts()}] ERROR Paramètres manquants`);
-          send(controller, { type: 'error', message: 'Paramètres manquants' });
-          controller.close();
-          return;
-        }
-
-        const budgetNum = parseFloat(budget);
-        if (isNaN(budgetNum) || budgetNum < 10) {
-          console.error(`[${ts()}] ERROR Budget invalide : ${budget}`);
-          send(controller, { type: 'error', message: 'Budget invalide (minimum 10€)' });
-          controller.close();
-          return;
-        }
-
-        const counts = slotCounts as Partial<SlotCounts> | undefined;
+        const body = await req.json();
+        const { commanderName, budget, slotCounts: counts } = parseGenerateDeckInput(body);
+        console.log(`[${ts()}] INFO  POST /api/generate-deck`, JSON.stringify({ commanderName, budget, slotCounts: counts }));
 
         send(controller, { type: 'progress', step: 'commander' });
         const t0 = Date.now();
@@ -47,7 +32,7 @@ export async function POST(req: NextRequest) {
           return;
         }
 
-        const cacheKey = buildCacheKey(commander.name, budgetNum, counts);
+        const cacheKey = buildCacheKey(commander.name, budget, counts);
         const cached = getCached(cacheKey);
         if (cached) {
           const stats = getCacheStats();
@@ -57,7 +42,7 @@ export async function POST(req: NextRequest) {
           return;
         }
 
-        const deck = await generateDeck(commander, budgetNum, (event: ProgressEvent) => {
+        const deck = await generateDeck(commander, budget, (event: ProgressEvent) => {
           if (event.cardImage) {
             if (event.upgradeOldImage) {
               send(controller, { type: 'upgrade', oldImage: event.upgradeOldImage, newImage: event.cardImage });
@@ -75,7 +60,8 @@ export async function POST(req: NextRequest) {
         console.log(`[${ts()}] INFO  Réponse envoyée (${Date.now() - start}ms total)`);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Erreur inconnue';
-        console.error(`[${ts()}] ERROR Génération échouée :`, message);
+        const prefix = error instanceof ValidationError ? 'Validation' : 'Génération échouée';
+        console.error(`[${ts()}] ERROR ${prefix} :`, message);
         send(controller, { type: 'error', message });
       } finally {
         controller.close();
