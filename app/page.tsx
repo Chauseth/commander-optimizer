@@ -20,6 +20,16 @@ interface DeckCard {
   eurPrice: number;
   count: number;
   isSynergy?: boolean;
+  explanation?: CardExplanation;
+}
+
+interface CardExplanation {
+  selectedSlot: string;
+  score: number;
+  topFactors: Array<{ label: string; value: number }>;
+  matchedTags: string[];
+  matchedQueries: string[];
+  note?: string;
 }
 
 interface DeckResult {
@@ -53,7 +63,19 @@ const ROLE_ICONS: Record<string, string> = {
   'Terrains basiques': '🏔️',
 };
 
-function CardSmall({ card, eurPrice, count, isSynergy }: { card: CardData; eurPrice: number; count: number; isSynergy?: boolean }) {
+function CardSmall({
+  card,
+  eurPrice,
+  count,
+  isSynergy,
+  explanation,
+}: {
+  card: CardData;
+  eurPrice: number;
+  count: number;
+  isSynergy?: boolean;
+  explanation?: CardExplanation;
+}) {
   const [hovered, setHovered] = useState(false);
   const img = card.image_uris?.small || card.card_faces?.[0]?.image_uris?.small;
   const isBasic = count > 1;
@@ -89,6 +111,36 @@ function CardSmall({ card, eurPrice, count, isSynergy }: { card: CardData; eurPr
           </a>
         )}
       </div>
+      {explanation && (
+        <details className="group/details px-2 pb-1">
+          <summary className="list-none cursor-pointer text-[11px] text-gray-500 hover:text-amber-400 flex items-center gap-2">
+            <span>Pourquoi ?</span>
+            <span className="text-gray-600">score {explanation.score}</span>
+          </summary>
+          <div className="mt-1 rounded-md border border-gray-800 bg-gray-950/80 p-2 text-[11px] text-gray-400 space-y-1">
+            <div>
+              <span className="text-gray-500">Slot:</span> {explanation.selectedSlot}
+            </div>
+            {explanation.topFactors.length > 0 && (
+              <div>
+                <span className="text-gray-500">Signaux:</span>{' '}
+                {explanation.topFactors.map(f => `${f.label} ${f.value}`).join(' | ')}
+              </div>
+            )}
+            {explanation.matchedTags.length > 0 && (
+              <div>
+                <span className="text-gray-500">Tags:</span> {explanation.matchedTags.join(', ')}
+              </div>
+            )}
+            {explanation.matchedQueries.length > 0 && (
+              <div>
+                <span className="text-gray-500">Requetes:</span> {explanation.matchedQueries.join(', ')}
+              </div>
+            )}
+            {explanation.note && <div>{explanation.note}</div>}
+          </div>
+        </details>
+      )}
       {hovered && img && (
         <div className="absolute z-50 left-full top-0 ml-2 pointer-events-none hidden md:block">
           <img src={img} alt={card.name} className="rounded-lg shadow-xl w-32" />
@@ -530,8 +582,15 @@ export default function Home() {
                     <span className="text-xs text-gray-500">{cards.length}</span>
                   </div>
                   <div className="space-y-0.5">
-                    {cards.map(({ card, eurPrice, count, isSynergy }) => (
-                      <CardSmall key={card.id} card={card} eurPrice={eurPrice} count={count} isSynergy={isSynergy} />
+                    {cards.map(({ card, eurPrice, count, isSynergy, explanation }) => (
+                      <CardSmall
+                        key={card.id}
+                        card={card}
+                        eurPrice={eurPrice}
+                        count={count}
+                        isSynergy={isSynergy}
+                        explanation={explanation}
+                      />
                     ))}
                   </div>
                 </div>

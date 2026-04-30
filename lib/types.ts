@@ -6,6 +6,16 @@ export interface DeckCard {
   eurPrice: number;
   count: number;
   isSynergy?: boolean;
+  explanation?: CardExplanation;
+}
+
+export interface CardExplanation {
+  selectedSlot: string;
+  score: number;
+  topFactors: Array<{ label: string; value: number }>;
+  matchedTags: string[];
+  matchedQueries: string[];
+  note?: string;
 }
 
 export interface GeneratedDeck {
