@@ -20,6 +20,32 @@ const log = {
   error: (msg: string, meta?: object) => console.error(`[${ts()}] ERROR ${msg}`, meta ? JSON.stringify(meta) : ''),
 };
 
+const SCORE_LABELS: Record<string, string> = {
+  popularity: 'Popularite EDHREC',
+  synergy: 'Synergie tags',
+  multiRole: 'Multi-role',
+  archetypeFit: 'Fit archetype',
+  queryFrequency: 'Frequence requetes',
+  priceEfficiency: 'Efficacite prix',
+};
+
+function buildExplanation(entry: PoolEntry, selectedSlot: string, note?: string): DeckCard['explanation'] {
+  const topFactors = Object.entries(entry.scoreBreakdown ?? {})
+    .map(([key, value]) => ({ label: SCORE_LABELS[key] ?? key, value: Math.round(value) }))
+    .filter(factor => factor.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 3);
+
+  return {
+    selectedSlot,
+    score: Math.round(entry.score ?? 0),
+    topFactors,
+    matchedTags: [...entry.tagMatches].slice(0, 5),
+    matchedQueries: [...entry.queryHits.keys()].slice(0, 5),
+    ...(note && { note }),
+  };
+}
+
 export async function generateDeck(
   commander: ScryfallCard,
   budgetEur: number,
@@ -156,7 +182,14 @@ export async function generateDeck(
     onAssign: (entry, slot) => {
       const isSynergy = slot === 'synergy';
       const role = isSynergy ? getCardTypeRole(entry.card.type_line ?? '') : SLOT_LABEL_FR[slot];
-      allDeckCards.push({ card: entry.card, role, eurPrice: entry.price, count: 1, ...(isSynergy && { isSynergy: true }) });
+      allDeckCards.push({
+        card: entry.card,
+        role,
+        eurPrice: entry.price,
+        count: 1,
+        explanation: buildExplanation(entry, SLOT_LABEL_FR[slot]),
+        ...(isSynergy && { isSynergy: true }),
+      });
       totalPrice += entry.price;
       notifyCard(entry.card);
     },
@@ -222,6 +255,7 @@ export async function generateDeck(
       if (dc) {
         dc.card = better.card;
         dc.eurPrice = better.price;
+        dc.explanation = buildExplanation(better, SLOT_LABEL_FR[cand.slot], `Upgrade depuis ${oldCard.name}`);
         if (cand.slot === 'synergy') dc.role = getCardTypeRole(better.card.type_line ?? '');
       }
       cand.entry = better;
@@ -259,7 +293,13 @@ export async function generateDeck(
     totalPrice += entry.price;
     remainingBudget -= entry.price;
     nonBasicLandsAdded++;
-    allDeckCards.push({ card: entry.card, role: NONBASIC_LAND_LABEL, eurPrice: entry.price, count: 1 });
+    allDeckCards.push({
+      card: entry.card,
+      role: NONBASIC_LAND_LABEL,
+      eurPrice: entry.price,
+      count: 1,
+      explanation: buildExplanation(entry, NONBASIC_LAND_LABEL),
+    });
     notifyCard(entry.card);
   }
   log.info(`SLOT ${NONBASIC_LAND_LABEL.padEnd(14)} ${nonBasicLandsAdded}/${nonBasicLandTarget}`);
@@ -307,6 +347,14 @@ export async function generateDeck(
       role: BASIC_LAND_LABEL,
       eurPrice: unitPrice * count,
       count,
+      explanation: {
+        selectedSlot: BASIC_LAND_LABEL,
+        score: 0,
+        topFactors: [],
+        matchedTags: [],
+        matchedQueries: [],
+        note: `Ajoute automatiquement pour atteindre ${adjustedTotalLands} terrains et respecter l'identite couleur.`,
+      },
     });
     totalPrice += unitPrice * count;
     basicSummary[landName] = count;
