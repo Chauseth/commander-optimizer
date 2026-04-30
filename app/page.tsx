@@ -167,15 +167,26 @@ export default function Home() {
   }, [query, fetchSuggestions]);
 
   useEffect(() => {
-    if (!selectedCommander) { setArchetype(null); return; }
-    setPreviewLoading(true);
-    fetch(`/api/slot-preview?commander=${encodeURIComponent(selectedCommander)}`)
-      .then(r => r.json())
+    if (!selectedCommander) return;
+    let cancelled = false;
+
+    Promise.resolve()
+      .then(() => {
+        if (cancelled) return undefined;
+        setPreviewLoading(true);
+        return fetch(`/api/slot-preview?commander=${encodeURIComponent(selectedCommander)}`);
+      })
+      .then(r => r?.json())
       .then(data => {
+        if (!data || cancelled) return;
         if (data.counts && !hasModifiedCounts) setCounts(data.counts);
         if (data.archetype) setArchetype(data.archetype);
       })
-      .finally(() => setPreviewLoading(false));
+      .finally(() => {
+        if (!cancelled) setPreviewLoading(false);
+      });
+
+    return () => { cancelled = true; };
   }, [selectedCommander]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleGenerate() {
@@ -212,7 +223,7 @@ export default function Home() {
           if (event.type === 'progress') {
             flushSync(() => {
               setCurrentStep(event.step);
-              setCompletedSteps(prev => {
+              setCompletedSteps(() => {
                 const idx = STEPS.findIndex(s => s.key === event.step);
                 return STEPS.slice(0, idx).map(s => s.key);
               });
@@ -341,7 +352,7 @@ export default function Home() {
                     ) : archetype ? (
                       <span className="text-xs text-amber-400/80">Archétype détecté : <span className="font-semibold">{archetype}</span></span>
                     ) : (
-                      <p className="text-xs text-gray-500">Répartition calculée selon l'archétype du Commander</p>
+                      <p className="text-xs text-gray-500">Répartition calculée selon l&apos;archétype du Commander</p>
                     )}
                   </div>
                 )}

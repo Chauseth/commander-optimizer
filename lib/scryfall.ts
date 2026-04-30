@@ -135,9 +135,10 @@ export async function getTaggerOracleTags(card: ScryfallCard): Promise<string[]>
     const csrfToken = csrfMatch[1];
 
     // Extrait les cookies de session (getSetCookie disponible en Node 18+)
+    const headersWithCookies = pageRes.headers as Headers & { getSetCookie?: () => string[] };
     const rawCookies: string[] =
-      typeof (pageRes.headers as any).getSetCookie === 'function'
-        ? (pageRes.headers as any).getSetCookie()
+      typeof headersWithCookies.getSetCookie === 'function'
+        ? headersWithCookies.getSetCookie()
         : [pageRes.headers.get('set-cookie') ?? ''];
     const cookieHeader = rawCookies.map(c => c.split(';')[0]).filter(Boolean).join('; ');
 
